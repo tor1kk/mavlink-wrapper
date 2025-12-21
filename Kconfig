@@ -1,0 +1,115 @@
+# MAVLink Wrapper Configuration
+
+config MAVWRAP
+	bool "MAVLink Wrapper Driver"
+	help
+	  Enable MAVLink wrapper driver for Zephyr RTOS.
+	  Provides a unified interface for MAVLink communication
+	  over various transports (UART, UDP, etc).
+
+if MAVWRAP
+
+config MAVWRAP_LOG_LEVEL
+	int "MAVLink Wrapper Log Level"
+	default 3
+	range 0 4
+	help
+	  Log level for MAVLink wrapper:
+	  0 = OFF, 1 = ERR, 2 = WRN, 3 = INF, 4 = DBG
+
+config MAVWRAP_INIT_PRIORITY
+	int "MAVLink Wrapper Initialization Priority"
+	default 80
+	range 1 99
+	help
+	  Initialization priority for MAVLink wrapper.
+	  Should be after UART/transport initialization.
+
+# UART Transport Configuration
+config MAVWRAP_UART
+	bool "UART Transport"
+	default y
+	depends on UART
+	help
+	  Enable UART transport for MAVLink.
+
+if MAVWRAP_UART
+
+config MAVWRAP_UART_RX_BUF_SIZE
+	int "UART RX Buffer Size"
+	default 512
+	range 256 4096
+	help
+	  Size of UART receive buffer in bytes.
+	  Larger buffers improve performance but use more RAM.
+
+config MAVWRAP_RX_QUEUE_LEN
+	int "RX Queue Length"
+	default 8
+	range 2 32
+	help
+	  Number of frames that can be queued for processing.
+	  Increase if you see "RX queue overflow" messages.
+
+config MAVWRAP_UART_RX_STACK_SIZE
+	int "UART RX Thread Stack Size"
+	default 2048
+	range 1024 8192
+	help
+	  Stack size for UART RX processing thread.
+
+config MAVWRAP_UART_RX_PRIORITY
+	int "UART RX Workqueue Priority"
+	default 5
+	range 0 15
+	help
+	  Priority for UART RX processing workqueue.
+	  Lower number = higher priority (0 = highest).
+
+config MAVWRAP_UART_USE_DMA
+	bool "Use DMA for UART if available"
+	default y
+	depends on UART_ASYNC_API
+	help
+	  Automatically use UART async API (DMA) if available.
+	  Falls back to IRQ mode if DMA is not available.
+
+config MAVWRAP_UART_TX_TIMEOUT_US
+    int "UART TX timeout (microseconds)"
+    default 100000
+    help
+      Maximum time to wait for UART TX complishion.
+
+config MAVWRAP_UART_RX_TIMEOUT_US
+    int "UART RX timeout (microseconds)"
+    default 10000
+    help
+      Idle timeout for UART RX async API.
+
+config THREAD_MAX_NAME_LEN
+	int "Maximum thread name length"
+	default 32
+	range 16 64
+	help
+	  Maximum length for thread names (for debugging).
+	  Used by mavwrap to create names like "mav_rx_mavlink0".
+
+endif # MAVWRAP_UART
+
+# TODO
+config MAVWRAP_UDP
+	bool "UDP Transport"
+	default n
+	depends on NETWORKING
+	help
+	  Enable UDP transport for MAVLink (future).
+
+# TODO
+config MAVWRAP_USB_CDC
+	bool "USB CDC Transport"
+	default n
+	depends on USB_DEVICE_STACK
+	help
+	  Enable USB CDC transport for MAVLink (future).
+
+endif # MAVWRAP

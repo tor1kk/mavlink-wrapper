@@ -1,0 +1,32 @@
+# MAVLink Wrapper Devicetree Bindings
+
+description: MAVLink communication wrapper
+
+compatible: "mavlink,mavlink-wrapper"
+
+properties:
+  label:
+    type: string
+    description: |
+      Human readable string describing the device.
+      Used for device_get_binding() lookups.
+
+  status:
+    type: string
+    description: Device status
+    enum:
+      - "okay"
+      - "disabled"
+
+child-binding:
+  description: |
+    MAVLink wrapper is a child node of a transport device (UART, USB CDC, etc).
+    The parent node defines the physical transport.
+    
+    Example:
+      &uart1 {
+        mavlink0: mavlink {
+          compatible = "mavlink,mavlink-wrapper";
+          status = "okay";
+        };
+      };
