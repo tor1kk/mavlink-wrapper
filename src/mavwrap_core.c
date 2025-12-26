@@ -2,6 +2,7 @@
 
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
+#include <zephyr/kernel_structs.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/ring_buffer.h>
 
@@ -13,62 +14,29 @@
 LOG_MODULE_REGISTER(mavwrap, CONFIG_MAVWRAP_LOG_LEVEL);
 
 
-/**
- * @brief Per-device runtime data
- */
 struct mavwrap_data {
 	const struct device *dev;
 
-	/* MAVLink parser state */
 	mavlink_message_t rx_msg;
 	mavlink_status_t rx_status;
 
-	/* User callback */
 	mavwrap_rx_callback_t user_callback;
 	void *user_data;
 
-	/* RX ring buffer and synchronization */
+	struct mavwrap_stats stats;
+	struct k_mutex stats_mutex;
+
 	struct ring_buf rx_rb;
 	uint8_t rx_rb_buf[CONFIG_MAVWRAP_RX_RING_SIZE];
 	struct k_sem rx_sem;
 
-	/* RX processing thread */
 	struct k_thread rx_thread;
 	k_tid_t rx_tid;
-	K_THREAD_STACK_MEMBER(rx_stack, CONFIG_MAVWRAP_RX_STACK_SIZE);
-
-	/* Statistics */
-	struct mavwrap_stats stats;
-	struct k_mutex stats_mutex;
+	
+	k_thread_stack_t *rx_stack;
 };
 
 
-/**
- * @brief Transport type enumeration
- */
-enum mavwrap_transport_type {
-	MAVWRAP_TRANSPORT_UART,
-	MAVWRAP_TRANSPORT_UDP,
-	MAVWRAP_TRANSPORT_USB_CDC,
-};
-
-
-/**
- * @brief Per-device configuration (const)
- */
-struct mavwrap_config {
-	const struct device *transport_dev;
-	const struct mavwrap_transport_ops *ops;
-	enum mavwrap_transport_type transport_type;
-};
-
-
-/**
- * @brief RX processing thread (per device)
- * 
- * Reads bytes from ring buffer and parses MAVLink messages.
- * Calls user callback when complete message is received.
- */
 static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 {
 	ARG_UNUSED(p2);
@@ -108,12 +76,6 @@ static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 }
 
 
-/**
- * @brief Transport RX handler - called by transport layer
- * 
- * Called from workqueue/IRQ context by transport layer.
- * Puts received bytes into ring buffer and signals RX thread.
- */
 static void mavwrap_transport_rx_handler(const struct device *dev,
                                          const uint8_t *buf,
                                          size_t len,
@@ -142,9 +104,6 @@ static void mavwrap_transport_rx_handler(const struct device *dev,
 }
 
 
-/**
- * @brief Initialize MAVLink device
- */
 static int mavwrap_init(const struct device *dev)
 {
 	struct mavwrap_data *data = dev->data;
@@ -152,6 +111,7 @@ static int mavwrap_init(const struct device *dev)
 	int ret;
 
 	data->dev = dev;
+	data->rx_stack = config->thread_stack;
 
 	k_mutex_init(&data->stats_mutex);
 
@@ -176,8 +136,8 @@ static int mavwrap_init(const struct device *dev)
 
 	data->rx_tid = k_thread_create(
 		&data->rx_thread,
-		data->rx_stack,
-		K_THREAD_STACK_SIZEOF(data->rx_stack),
+		config->thread_stack,
+		config->stack_size,
 		mavwrap_rx_thread,
 		(void *)dev, NULL, NULL,
 		CONFIG_MAVWRAP_RX_THREAD_PRIORITY,
@@ -188,9 +148,11 @@ static int mavwrap_init(const struct device *dev)
 		return -ENOMEM;
 	}
 
+#ifdef CONFIG_THREAD_NAME
 	char thread_name[CONFIG_THREAD_MAX_NAME_LEN];
 	snprintk(thread_name, sizeof(thread_name), "mav_rx_%s", dev->name);
 	k_thread_name_set(data->rx_tid, thread_name);
+#endif
 
 	ret = config->ops->set_rx_callback(dev,
 									mavwrap_transport_rx_handler,
@@ -300,46 +262,62 @@ int mavwrap_reset_stats(const struct device *dev)
 }
 
 
+#if CONFIG_MAVWRAP_TRANSPORT_UART
 extern const struct mavwrap_transport_ops mavwrap_uart_ops;
+#endif
 
 
-#define MAVWRAP_TRANSPORT_DEV(inst) \
-	DEVICE_DT_GET(DT_INST_PHANDLE(inst, transport))
+#define MAVWRAP_TRANSPORT_DEV(inst) 												\
+	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, transport), 							\
+		(DEVICE_DT_GET(DT_INST_PHANDLE(inst, transport))), 							\
+		(NULL))
 
-#define MAVWRAP_TRANSPORT_TYPE(inst) \
-	COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), zephyr_cdc_acm_uart), \
-		(MAVWRAP_TRANSPORT_USB_CDC), \
-		(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), zephyr_uart), \
-			(MAVWRAP_TRANSPORT_UART), \
-			(MAVWRAP_TRANSPORT_UART))))
+#define MAVWRAP_TRANSPORT_TYPE(inst) 												\
+	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, transport), 							\
+		(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), 			\
+			zephyr_cdc_acm_uart), 													\
+			(MAVWRAP_TRANSPORT_USB_CDC), 											\
+			(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), 		\
+				zephyr_uart), 														\
+				(MAVWRAP_TRANSPORT_UART), 											\
+				(MAVWRAP_TRANSPORT_UART))))), 										\
+		(MAVWRAP_TRANSPORT_UART))
 
-#define MAVWRAP_TRANSPORT_OPS(inst) \
-	COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), zephyr_uart), \
-		(&mavwrap_uart_ops), \
-		(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), zephyr_cdc_acm_uart), \
-			(&mavwrap_uart_ops), \
-			(&mavwrap_uart_ops))))
+#define MAVWRAP_TRANSPORT_OPS(inst) 												\
+	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, transport), 							\
+		(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), 			\
+			zephyr_uart), 															\
+			(&mavwrap_uart_ops), 													\
+			(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), 		\
+				zephyr_cdc_acm_uart), 												\
+				(&mavwrap_uart_ops), 												\
+				(&mavwrap_uart_ops))))), 											\
+		(&mavwrap_uart_ops))
 
-#define MAVWRAP_CONFIG_INIT(inst) \
-	{ \
-		.transport_dev = MAVWRAP_TRANSPORT_DEV(inst), \
-		.ops = MAVWRAP_TRANSPORT_OPS(inst), \
-		.transport_type = MAVWRAP_TRANSPORT_TYPE(inst), \
+#define MAVWRAP_CONFIG_INIT(inst) 													\
+	{ 																				\
+		.transport_dev = MAVWRAP_TRANSPORT_DEV(inst),			 					\
+		.ops = MAVWRAP_TRANSPORT_OPS(inst), 										\
+		.transport_type = MAVWRAP_TRANSPORT_TYPE(inst), 							\
+		.thread_stack = mavwrap_rx_stack_##inst, 									\
+		.stack_size = K_THREAD_STACK_SIZEOF(mavwrap_rx_stack_##inst), 				\
 	}
 
-#define MAVWRAP_DEVICE_INIT(inst) \
-	static struct mavwrap_data mavwrap_data_##inst; \
-	\
-	static const struct mavwrap_config mavwrap_config_##inst = \
-		MAVWRAP_CONFIG_INIT(inst); \
-	\
-	DEVICE_DT_INST_DEFINE(inst, \
-	                      mavwrap_init, \
-	                      NULL, \
-	                      &mavwrap_data_##inst, \
-	                      &mavwrap_config_##inst, \
-	                      POST_KERNEL, \
-	                      CONFIG_MAVWRAP_INIT_PRIORITY, \
+#define MAVWRAP_DEVICE_INIT(inst) 													\
+	K_THREAD_STACK_DEFINE(mavwrap_rx_stack_##inst, CONFIG_MAVWRAP_RX_STACK_SIZE);	\
+																					\
+	static struct mavwrap_data mavwrap_data_##inst; 								\
+																					\
+	static const struct mavwrap_config mavwrap_config_##inst = 						\
+		MAVWRAP_CONFIG_INIT(inst); 													\
+																					\
+	DEVICE_DT_INST_DEFINE(inst, 													\
+	                      mavwrap_init,		 										\
+	                      NULL, 													\
+	                      &mavwrap_data_##inst, 									\
+	                      &mavwrap_config_##inst, 									\
+	                      POST_KERNEL, 												\
+	                      CONFIG_MAVWRAP_INIT_PRIORITY, 							\
 	                      NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(MAVWRAP_DEVICE_INIT)

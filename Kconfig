@@ -2,7 +2,6 @@
 
 menuconfig MAVWRAP
 	bool "MAVLink Wrapper Support"
-	depends on DT_HAS_MAVLINK_MAVLINK_WRAPPER_ENABLED
 	help
 	  Enable MAVLink protocol wrapper for Zephyr RTOS.
 	  Provides a high-level API for sending and receiving MAVLink messages
@@ -67,7 +66,7 @@ config MAVWRAP_RX_RING_SIZE
 
 config MAVWRAP_TRANSPORT_UART
 	bool "UART"
-	depends on UART
+	depends on SERIAL
 	help
 	  Use UART as MAVLink transport layer.
 	  Supports both IRQ and DMA (async API) modes.
@@ -89,8 +88,6 @@ config MAVWRAP_TRANSPORT_UDP
 	  For network-based MAVLink communication.
 	  
 	  Note: Not yet fully implemented.
-
-endchoice
 
 
 

@@ -15,9 +15,6 @@ LOG_MODULE_DECLARE(mavwrap);
 #define IRQ_RX_BUFF_SIZE		256
 
 
-/**
- * @brief UART transport data (per device)
- */
 struct mavwrap_uart_data {
 	const struct device *uart_dev;
 
@@ -38,9 +35,6 @@ struct mavwrap_uart_data {
 };
 
 
-/**
- * @brief Notify core layer of received data
- */
 static void uart_notify_rx(const struct device *dev, uint8_t *buff, size_t len)
 {
 	struct mavwrap_uart_data *data = dev->data;
@@ -53,15 +47,13 @@ static void uart_notify_rx(const struct device *dev, uint8_t *buff, size_t len)
 
 #ifdef CONFIG_UART_ASYNC_API
 
-/**
- * @brief DMA/Async UART callback
- */
-static void uart_dma_callback(const struct device *uart_dev,
+static void uart_dma_callback(const struct device *dev,
                                struct uart_event *evt,
                                void *user_data)
 {
-	const struct device *dev = user_data;
-	struct mavwrap_uart_data *data = dev->data;
+ 	struct mavwrap_uart_data *data = dev->data;
+	const struct mavwrap_config *config = dev->config;
+	const struct device *uart_dev = config->transport_dev;
 
 	switch (evt->type) {
 	case UART_RX_RDY:
@@ -100,12 +92,9 @@ static void uart_dma_callback(const struct device *uart_dev,
 	}
 }
 
-#endif /* CONFIG_UART_ASYNC_API */
+#endif
 
 
-/**
- * @brief IRQ-based UART callback
- */
 static void uart_irq_callback(const struct device *uart_dev, void *user_data)
 {
 	const struct device *dev = user_data;
@@ -141,9 +130,6 @@ static void uart_irq_callback(const struct device *uart_dev, void *user_data)
 }
 
 
-/**
- * @brief Initialize UART transport
- */
 static int mavwrap_uart_init(const struct device *dev)
 {
 	const struct mavwrap_config *config = dev->config;
@@ -179,16 +165,13 @@ static int mavwrap_uart_init(const struct device *dev)
 }
 
 
-/**
- * @brief Send data over UART
- */
 static int mavwrap_uart_send(const struct device *dev,
-                              const uint8_t *buf,
-                              size_t len)
+							const uint8_t *buf,
+							size_t len)
 {
 	const struct mavwrap_config *config = dev->config;
-	const struct device *uart_dev = config->transport_dev;
 	struct mavwrap_uart_data *uart_data = dev->data;
+	const struct device *uart_dev = config->transport_dev;
 	int ret;
 
 	if (!buf || len == 0) {
@@ -237,9 +220,6 @@ static int mavwrap_uart_send(const struct device *dev,
 }
 
 
-/**
- * @brief Set RX callback
- */
 static int mavwrap_uart_set_rx_callback(const struct device *dev,
                                         mavwrap_transport_rx_cb_t callback,
                                         void *user_data)
