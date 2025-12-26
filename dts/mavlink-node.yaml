@@ -1,32 +1,41 @@
 # MAVLink Wrapper Devicetree Bindings
 
-description: MAVLink communication wrapper
+description: |
+  MAVLink communication wrapper for Zephyr RTOS.
 
 compatible: "mavlink,mavlink-wrapper"
 
 properties:
+  transport:
+    type: phandle
+    required: true
+    description: |
+      Phandle to the transport device (UART, USB CDC, etc).
+      The transport device must be configured and ready before
+      MAVLink wrapper initialization.
+
+  transport-type:
+    type: string
+    enum:
+      - "uart"
+      - "udp"
+      - "usb-cdc"
+    description: |
+      Type of transport. If not specified, will be auto-detected
+      from the transport device compatible string.
+
   label:
     type: string
     description: |
-      Human readable string describing the device.
-      Used for device_get_binding() lookups.
+      Human-readable label for this MAVLink instance.
+      Used in logs and shell commands.
+      Example: "GCS", "Telemetry", "Companion"
 
   status:
     type: string
-    description: Device status
+    required: true
     enum:
       - "okay"
       - "disabled"
-
-child-binding:
-  description: |
-    MAVLink wrapper is a child node of a transport device (UART, USB CDC, etc).
-    The parent node defines the physical transport.
-    
-    Example:
-      &uart1 {
-        mavlink0: mavlink {
-          compatible = "mavlink,mavlink-wrapper";
-          status = "okay";
-        };
-      };
+    description: |
+      Device status. Set to "disabled" to prevent initialization.

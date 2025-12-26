@@ -1,115 +1,146 @@
 # MAVLink Wrapper Configuration
 
-config MAVWRAP
-	bool "MAVLink Wrapper Driver"
+menuconfig MAVWRAP
+	bool "MAVLink Wrapper Support"
+	depends on DT_HAS_MAVLINK_MAVLINK_WRAPPER_ENABLED
 	help
-	  Enable MAVLink wrapper driver for Zephyr RTOS.
-	  Provides a unified interface for MAVLink communication
-	  over various transports (UART, UDP, etc).
+	  Enable MAVLink protocol wrapper for Zephyr RTOS.
+	  Provides a high-level API for sending and receiving MAVLink messages
+	  over various transport layers (UART, USB, UDP).
 
 if MAVWRAP
 
-config MAVWRAP_LOG_LEVEL
-	int "MAVLink Wrapper Log Level"
-	default 3
-	range 0 4
-	help
-	  Log level for MAVLink wrapper:
-	  0 = OFF, 1 = ERR, 2 = WRN, 3 = INF, 4 = DBG
+module = MAVWRAP
+module-str = mavwrap
+source "subsys/logging/Kconfig.template.log_config"
 
 config MAVWRAP_INIT_PRIORITY
-	int "MAVLink Wrapper Initialization Priority"
-	default 80
-	range 1 99
+	int "MAVLink wrapper initialization priority"
+	default 90
+	range 0 99
 	help
-	  Initialization priority for MAVLink wrapper.
-	  Should be after UART/transport initialization.
+	  Initialization priority for MAVLink wrapper devices.
+	  Should be initialized after transport layer (UART, USB, etc).
+	  Default: POST_KERNEL level 90
 
-# UART Transport Configuration
-config MAVWRAP_UART
-	bool "UART Transport"
-	default y
-	depends on UART
-	help
-	  Enable UART transport for MAVLink.
-
-if MAVWRAP_UART
-
-config MAVWRAP_UART_RX_BUF_SIZE
-	int "UART RX Buffer Size"
-	default 512
-	range 256 4096
-	help
-	  Size of UART receive buffer in bytes.
-	  Larger buffers improve performance but use more RAM.
-
-config MAVWRAP_RX_QUEUE_LEN
-	int "RX Queue Length"
-	default 8
-	range 2 32
-	help
-	  Number of frames that can be queued for processing.
-	  Increase if you see "RX queue overflow" messages.
-
-config MAVWRAP_UART_RX_STACK_SIZE
-	int "UART RX Thread Stack Size"
+config MAVWRAP_RX_STACK_SIZE
+	int "RX thread stack size (bytes)"
 	default 2048
 	range 1024 8192
 	help
-	  Stack size for UART RX processing thread.
+	  Stack size for MAVLink RX processing thread.
+	  This thread parses incoming MAVLink messages from ring buffer.
+	  
+	  Typical values:
+	  - 1024: Minimal, for simple callbacks
+	  - 2048: Recommended for most applications
+	  - 4096+: If callbacks do heavy processing
 
-config MAVWRAP_UART_RX_PRIORITY
-	int "UART RX Workqueue Priority"
+config MAVWRAP_RX_THREAD_PRIORITY
+	int "RX thread priority"
 	default 5
 	range 0 15
 	help
-	  Priority for UART RX processing workqueue.
-	  Lower number = higher priority (0 = highest).
+	  Priority of MAVLink RX processing thread.
+	  Lower values = higher priority (cooperative scheduling).
+	  
+	  Typical values:
+	  - 3-5: High priority, low latency
+	  - 7-10: Medium priority (recommended)
+	  - 11-15: Lower priority, for non-critical telemetry
 
-config MAVWRAP_UART_USE_DMA
-	bool "Use DMA for UART if available"
-	default y
-	depends on UART_ASYNC_API
+config MAVWRAP_RX_RING_SIZE
+	int "RX ring buffer size (bytes)"
+	default 1024
+	range 256 8192
 	help
-	  Automatically use UART async API (DMA) if available.
-	  Falls back to IRQ mode if DMA is not available.
+	  Size of ring buffer for received data before parsing.
+	  Should be large enough to handle bursts from transport layer.
+	  
+	  Guidelines:
+	  - Minimum: 2-3x max MAVLink packet size (≈800 bytes)
+	  - For high-rate telemetry: 2048-4096 bytes
+	  - For bursty data or slow RX thread: 4096-8192 bytes
 
-config MAVWRAP_UART_TX_TIMEOUT_US
-    int "UART TX timeout (microseconds)"
-    default 100000
-    help
-      Maximum time to wait for UART TX complishion.
 
-config MAVWRAP_UART_RX_TIMEOUT_US
-    int "UART RX timeout (microseconds)"
-    default 10000
-    help
-      Idle timeout for UART RX async API.
 
-config THREAD_MAX_NAME_LEN
-	int "Maximum thread name length"
-	default 32
-	range 16 64
+
+config MAVWRAP_TRANSPORT_UART
+	bool "UART"
+	depends on UART
 	help
-	  Maximum length for thread names (for debugging).
-	  Used by mavwrap to create names like "mav_rx_mavlink0".
+	  Use UART as MAVLink transport layer.
+	  Supports both IRQ and DMA (async API) modes.
 
-endif # MAVWRAP_UART
-
-# TODO
-config MAVWRAP_UDP
-	bool "UDP Transport"
-	default n
-	depends on NETWORKING
-	help
-	  Enable UDP transport for MAVLink (future).
-
-# TODO
-config MAVWRAP_USB_CDC
-	bool "USB CDC Transport"
-	default n
+config MAVWRAP_TRANSPORT_USB_CDC
+	bool "USB CDC-ACM"
 	depends on USB_DEVICE_STACK
+	depends on USB_CDC_ACM
 	help
-	  Enable USB CDC transport for MAVLink (future).
+	  Use USB CDC-ACM as MAVLink transport layer.
+	  Appears as virtual serial port to host.
+
+config MAVWRAP_TRANSPORT_UDP
+	bool "UDP (network)"
+	depends on NET_UDP
+	depends on NET_IPV4 || NET_IPV6
+	help
+	  Use UDP as MAVLink transport layer.
+	  For network-based MAVLink communication.
+	  
+	  Note: Not yet fully implemented.
+
+endchoice
+
+
+
+if MAVWRAP_TRANSPORT_UART
+
+config MAVWRAP_UART_TX_TIMEOUT_MS
+	int "UART TX timeout (milliseconds)"
+	default 100
+	range 10 5000
+	help
+	  Maximum time to wait for UART TX to complete.
+	  If timeout occurs, TX fails with -ETIMEDOUT.
+	  
+	  Typical values:
+	  - 50-100ms: Normal operation
+	  - 500-1000ms: Slow baud rates or congested links
+	  - 5000ms: Debug/testing only
+
+config MAVWRAP_UART_RX_TIMEOUT_MS
+	int "UART RX timeout for async mode (milliseconds)"
+	default 1000
+	range 100 10000
+	help
+	  Timeout for async UART RX operations (DMA mode).
+	  Not used in IRQ mode.
+	  
+	  This is the maximum time between received characters before
+	  the DMA buffer is flushed. Should be longer than expected
+	  inter-character gaps at your baud rate.
+
+if UART_ASYNC_API
+
+config MAVWRAP_UART_DMA_RX_BUF_SIZE
+	int "DMA RX buffer size per buffer (bytes)"
+	default 256
+	range 64 2048
+	help
+	  Size of each DMA RX buffer (uses double buffering).
+	  Total DMA memory = 2 * this value.
+	  
+	  Should be large enough to hold multiple MAVLink packets
+	  to avoid overflow during burst traffic.
+	  
+	  Typical values:
+	  - 128-256: Low-rate telemetry
+	  - 512-1024: High-rate or bursty traffic
+	  - 1024-2048: Very high rate or large packets
+
+endif # UART_ASYNC_API
+
+endif # MAVWRAP_TRANSPORT_UART
 
 endif # MAVWRAP

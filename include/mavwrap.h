@@ -15,12 +15,11 @@ extern "C" {
  * @brief MAVLink statistics structure
  */
 struct mavwrap_stats {
-	uint32_t rx_packets;      /**< Successfully received packets */
-	uint32_t tx_packets;      /**< Successfully transmitted packets */
-	uint32_t rx_errors;       /**< RX errors (CRC, parse, etc) */
-	uint32_t tx_errors;       /**< TX errors */
-	uint32_t rx_dropped;      /**< Dropped packets (buffer full) */
-    uint32_t tx_timeouted;    /**< Dropped packets (buffer full) */
+	uint32_t rx_packets;        /**< Successfully received packets */
+	uint32_t tx_packets;        /**< Successfully transmitted packets */
+	uint32_t rx_errors;         /**< RX errors (CRC, parse, etc) */
+	uint32_t tx_errors;         /**< TX errors */
+	uint32_t rx_buff_overflow;  /**< RX buffer overflow (buffer full) */
 };
 
 
