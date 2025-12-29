@@ -1,0 +1,24 @@
+# MAVLink Wrapper Devicetree Bindings
+
+description: |
+  MAVLink communication wrapper for Zephyr RTOS.
+
+compatible: "mavlink-wrapper"
+
+properties:
+
+  label:
+    type: string
+    description: |
+      Human-readable label for this MAVLink instance.
+      Used in logs and shell commands.
+      Example: "GCS", "Telemetry", "Companion"
+
+  status:
+    type: string
+    required: true
+    enum:
+      - "okay"
+      - "disabled"
+    description: |
+      Device status. Set to "disabled" to prevent initialization.

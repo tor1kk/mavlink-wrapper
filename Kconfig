@@ -29,11 +29,6 @@ config MAVWRAP_RX_STACK_SIZE
 	help
 	  Stack size for MAVLink RX processing thread.
 	  This thread parses incoming MAVLink messages from ring buffer.
-	  
-	  Typical values:
-	  - 1024: Minimal, for simple callbacks
-	  - 2048: Recommended for most applications
-	  - 4096+: If callbacks do heavy processing
 
 config MAVWRAP_RX_THREAD_PRIORITY
 	int "RX thread priority"
@@ -55,13 +50,6 @@ config MAVWRAP_RX_RING_SIZE
 	help
 	  Size of ring buffer for received data before parsing.
 	  Should be large enough to handle bursts from transport layer.
-	  
-	  Guidelines:
-	  - Minimum: 2-3x max MAVLink packet size (≈800 bytes)
-	  - For high-rate telemetry: 2048-4096 bytes
-	  - For bursty data or slow RX thread: 4096-8192 bytes
-
-
 
 
 config MAVWRAP_TRANSPORT_UART
@@ -70,24 +58,6 @@ config MAVWRAP_TRANSPORT_UART
 	help
 	  Use UART as MAVLink transport layer.
 	  Supports both IRQ and DMA (async API) modes.
-
-config MAVWRAP_TRANSPORT_USB_CDC
-	bool "USB CDC-ACM"
-	depends on USB_DEVICE_STACK
-	depends on USB_CDC_ACM
-	help
-	  Use USB CDC-ACM as MAVLink transport layer.
-	  Appears as virtual serial port to host.
-
-config MAVWRAP_TRANSPORT_UDP
-	bool "UDP (network)"
-	depends on NET_UDP
-	depends on NET_IPV4 || NET_IPV6
-	help
-	  Use UDP as MAVLink transport layer.
-	  For network-based MAVLink communication.
-	  
-	  Note: Not yet fully implemented.
 
 
 

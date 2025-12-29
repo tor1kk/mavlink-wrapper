@@ -23,8 +23,7 @@ struct mavwrap_transport_ops {
 
 enum mavwrap_transport_type {
 	MAVWRAP_TRANSPORT_UART,
-	MAVWRAP_TRANSPORT_UDP,
-	MAVWRAP_TRANSPORT_USB_CDC,
+	MAVWRAP_TRANSPORT_UNKNOWN,
 };
 
 

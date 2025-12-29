@@ -1,4 +1,4 @@
-#define DT_DRV_COMPAT mavlink_mavlink_wrapper
+#define DT_DRV_COMPAT mavlink_wrapper
 
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
@@ -17,6 +17,9 @@ LOG_MODULE_REGISTER(mavwrap, CONFIG_MAVWRAP_LOG_LEVEL);
 struct mavwrap_data {
 	const struct device *dev;
 
+	mavlink_message_t dummy_rx_msg;
+	mavlink_status_t dummy_rx_status;
+
 	mavlink_message_t rx_msg;
 	mavlink_status_t rx_status;
 
@@ -34,7 +37,7 @@ struct mavwrap_data {
 	k_tid_t rx_tid;
 	
 	k_thread_stack_t *rx_stack;
-};
+}; 
 
 
 static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
@@ -44,7 +47,7 @@ static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 
 	const struct device *dev = p1;
 	struct mavwrap_data *data = dev->data;
-	uint8_t rx_byte;
+	uint8_t rx_byte = 0;
 
 	LOG_INF("[%s] RX thread started", dev->name);
 
@@ -115,10 +118,16 @@ static int mavwrap_init(const struct device *dev)
 
 	k_mutex_init(&data->stats_mutex);
 
+	memset(&data->stats, 0, sizeof(data->stats));
+
 	memset(&data->rx_msg, 0, sizeof(data->rx_msg));
 	memset(&data->rx_status, 0, sizeof(data->rx_status));
 
-	memset(&data->stats, 0, sizeof(data->stats));
+	if (config->transport_type == MAVWRAP_TRANSPORT_UNKNOWN)
+	{
+		LOG_ERR("[%s] Transport type not supported: %d", dev->name, -ENODEV);
+		return -ENODEV;
+	}
 
 	if (config->ops->init) {
 		ret = config->ops->init(dev);
@@ -268,31 +277,11 @@ extern const struct mavwrap_transport_ops mavwrap_uart_ops;
 
 
 #define MAVWRAP_TRANSPORT_DEV(inst) 												\
-	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, transport), 							\
-		(DEVICE_DT_GET(DT_INST_PHANDLE(inst, transport))), 							\
-		(NULL))
+	DEVICE_DT_GET(DT_PARENT(DT_DRV_INST(inst)))
 
-#define MAVWRAP_TRANSPORT_TYPE(inst) 												\
-	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, transport), 							\
-		(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), 			\
-			zephyr_cdc_acm_uart), 													\
-			(MAVWRAP_TRANSPORT_USB_CDC), 											\
-			(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), 		\
-				zephyr_uart), 														\
-				(MAVWRAP_TRANSPORT_UART), 											\
-				(MAVWRAP_TRANSPORT_UART))))), 										\
-		(MAVWRAP_TRANSPORT_UART))
+#define MAVWRAP_TRANSPORT_TYPE(inst) MAVWRAP_TRANSPORT_UART
 
-#define MAVWRAP_TRANSPORT_OPS(inst) 												\
-	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, transport), 							\
-		(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), 			\
-			zephyr_uart), 															\
-			(&mavwrap_uart_ops), 													\
-			(COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, transport), 		\
-				zephyr_cdc_acm_uart), 												\
-				(&mavwrap_uart_ops), 												\
-				(&mavwrap_uart_ops))))), 											\
-		(&mavwrap_uart_ops))
+#define MAVWRAP_TRANSPORT_OPS(inst) &mavwrap_uart_ops
 
 #define MAVWRAP_CONFIG_INIT(inst) 													\
 	{ 																				\
