@@ -12,7 +12,7 @@
 LOG_MODULE_DECLARE(mavwrap);
 
 
-#define IRQ_RX_BUFF_SIZE		256
+#define IRQ_RX_BUFF_SIZE		32
 
 
 struct mavwrap_uart_data {
