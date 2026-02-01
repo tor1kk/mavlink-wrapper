@@ -1,0 +1,82 @@
+# MAVLink Wrapper Devicetree Bindings
+
+description: |
+  MAVLink communication wrapper for Zephyr RTOS.
+
+compatible: "mavlink-wrapper"
+
+properties:
+  label:
+    type: string
+    description: |
+      Human-readable label for this MAVLink instance.
+      Used in logs and shell commands.
+      Example: "GCS", "Telemetry", "Companion"
+  
+  transport:
+    type: phandle
+    required: true
+    description: |
+      Reference to the transport interface used by this MAVLink instance.
+      This should point to a UART or network device.
+
+  serial-interface:
+    type: boolean
+    description: |
+      Indicates if this MAVLink instance uses a serial interface (UART).
+      Mutually exclusive with net-interface.
+
+  net-interface:
+    type: boolean
+    description: |
+      Indicates if this MAVLink instance uses network transport.
+      If true, network configuration properties are required.
+      Mutually exclusive with serial-interface.
+
+  net-type:
+    type: string
+    required: false
+    enum:
+      - "udp"
+    description: |
+      Network transport protocol type.
+
+  use-dhcp:
+    type: boolean
+    description: |
+      If true, enables DHCP for this MAVLink network interface.
+      If false, static IP configuration (local-ip) must be provided.
+      Default: false
+
+  local-ip:
+    type: string
+    description: |
+      Local IP address (IPv4) for network transport.
+      Required if use-dhcp is false.
+      Example: "192.168.1.100"
+      Default: "0.0.0.0"
+
+  local-port:
+    type: int
+    default: 14550
+    description: |
+      Local port for network transport (bind port).
+      For UDP: the port to listen on.
+      Default: 14550
+
+  remote-ip:
+    type: string
+    default: "0.0.0.0"
+    description: |
+      Remote IP address (IPv4) for network transport.
+      For UDP: the destination IP for sent packets.
+      Example: "192.168.1.1"
+      Default: "0.0.0.0"
+
+  remote-port:
+    type: int
+    default: 14551
+    description: |
+      Remote port for network transport.
+      For UDP: the destination port for sent packets.
+      Default: 14551

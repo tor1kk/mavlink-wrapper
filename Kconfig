@@ -1,113 +1,110 @@
-# MAVLink Wrapper Configuration
-
 menuconfig MAVWRAP
-	bool "MAVLink Wrapper Support"
+	bool "MAVLink Wrapper Driver"
 	help
-	  Enable MAVLink protocol wrapper for Zephyr RTOS.
-	  Provides a high-level API for sending and receiving MAVLink messages
-	  over various transport layers (UART, USB, UDP).
+	  Enable MAVLink protocol wrapper driver with transport abstraction.
+	  Supports UART and Network (UDP/TCP) transports.
 
 if MAVWRAP
 
-module = MAVWRAP
-module-str = mavwrap
-source "subsys/logging/Kconfig.template.log_config"
+config MAVWRAP_LOG_LEVEL
+	int "MAVLink Wrapper Log Level"
+	default 3
+	range 0 4
+	help
+	  Log level for MAVLink wrapper driver:
+	    0 = OFF
+	    1 = ERROR
+	    2 = WARNING
+	    3 = INFO
+	    4 = DEBUG
 
 config MAVWRAP_INIT_PRIORITY
-	int "MAVLink wrapper initialization priority"
+	int "MAVLink Wrapper Initialization Priority"
 	default 90
 	range 0 99
 	help
-	  Initialization priority for MAVLink wrapper devices.
-	  Should be initialized after transport layer (UART, USB, etc).
-	  Default: POST_KERNEL level 90
+	  Initialization priority for MAVLink wrapper driver.
+	  Should be initialized after transport devices (UART, Network).
+
+config MAVWRAP_RX_RING_SIZE
+	int "RX Ring Buffer Size (bytes)"
+	default 1024
+	range 512 8192
+	help
+	  Size of the ring buffer for receiving MAVLink data.
+	  Should be at least 2x MAVLINK_MAX_PACKET_LEN (263 bytes).
+	  Larger buffers handle burst traffic better.
 
 config MAVWRAP_RX_STACK_SIZE
-	int "RX thread stack size (bytes)"
+	int "RX Thread Stack Size (bytes)"
 	default 2048
 	range 1024 8192
 	help
-	  Stack size for MAVLink RX processing thread.
-	  This thread parses incoming MAVLink messages from ring buffer.
+	  Stack size for the MAVLink RX processing thread.
 
 config MAVWRAP_RX_THREAD_PRIORITY
-	int "RX thread priority"
+	int "RX Thread Priority"
 	default 5
 	range 0 15
 	help
-	  Priority of MAVLink RX processing thread.
-	  Lower values = higher priority (cooperative scheduling).
-	  
-	  Typical values:
-	  - 3-5: High priority, low latency
-	  - 7-10: Medium priority (recommended)
-	  - 11-15: Lower priority, for non-critical telemetry
-
-config MAVWRAP_RX_RING_SIZE
-	int "RX ring buffer size (bytes)"
-	default 1024
-	range 256 8192
-	help
-	  Size of ring buffer for received data before parsing.
-	  Should be large enough to handle bursts from transport layer.
+	  Priority of the MAVLink RX processing thread.
+	  Lower values = higher priority.
 
 
 config MAVWRAP_TRANSPORT_UART
-	bool "UART"
-	depends on SERIAL
+	bool "Enable UART Transport"
+	default y
+	depends on UART_INTERRUPT_DRIVEN || UART_ASYNC_API
 	help
-	  Use UART as MAVLink transport layer.
-	  Supports both IRQ and DMA (async API) modes.
-
-
+	  Enable UART transport support for MAVLink.
+	  Requires either UART interrupt or async API support.
 
 if MAVWRAP_TRANSPORT_UART
 
 config MAVWRAP_UART_TX_TIMEOUT_MS
-	int "UART TX timeout (milliseconds)"
-	default 100
-	range 10 5000
-	help
-	  Maximum time to wait for UART TX to complete.
-	  If timeout occurs, TX fails with -ETIMEDOUT.
-	  
-	  Typical values:
-	  - 50-100ms: Normal operation
-	  - 500-1000ms: Slow baud rates or congested links
-	  - 5000ms: Debug/testing only
-
-config MAVWRAP_UART_RX_TIMEOUT_MS
-	int "UART RX timeout for async mode (milliseconds)"
+	int "UART TX Timeout (milliseconds)"
 	default 1000
 	range 100 10000
 	help
-	  Timeout for async UART RX operations (DMA mode).
-	  Not used in IRQ mode.
-	  
-	  This is the maximum time between received characters before
-	  the DMA buffer is flushed. Should be longer than expected
-	  inter-character gaps at your baud rate.
+	  Timeout for UART transmission operations.
 
-if UART_ASYNC_API
+config MAVWRAP_UART_RX_TIMEOUT_MS
+	int "UART RX Timeout (milliseconds)"
+	default 100
+	range 10 5000
+	help
+	  Timeout for UART async RX operations (DMA mode only).
 
 config MAVWRAP_UART_DMA_RX_BUF_SIZE
-	int "DMA RX buffer size per buffer (bytes)"
-	default 256
-	range 64 2048
+	int "UART DMA RX Buffer Size (bytes)"
+	default 512
+	range 263 2048
+	depends on UART_ASYNC_API
 	help
-	  Size of each DMA RX buffer (uses double buffering).
-	  Total DMA memory = 2 * this value.
-	  
-	  Should be large enough to hold multiple MAVLink packets
-	  to avoid overflow during burst traffic.
-	  
-	  Typical values:
-	  - 128-256: Low-rate telemetry
-	  - 512-1024: High-rate or bursty traffic
-	  - 1024-2048: Very high rate or large packets
-
-endif # UART_ASYNC_API
+	  Size of each DMA RX buffer (double-buffered).
+	  Must be >= MAVLINK_MAX_PACKET_LEN (263 bytes).
 
 endif # MAVWRAP_TRANSPORT_UART
+
+
+config MAVWRAP_TRANSPORT_NETIF
+	bool "Enable Network Transport"
+	default y
+	depends on NETWORKING
+	select NET_UDP
+	select NET_SOCKETS
+	help
+	  Enable network transport (UDP/TCP) support for MAVLink.
+
+if MAVWRAP_TRANSPORT_NETIF
+
+config MAVWRAP_NETIF_DHCP
+	bool "Enable DHCP Support"
+	default y
+	depends on NET_DHCPV4
+	help
+	  Enable DHCP client support for network transport.
+
+endif # MAVWRAP_TRANSPORT_NETIF
 
 endif # MAVWRAP

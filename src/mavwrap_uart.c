@@ -5,7 +5,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/ring_buffer.h>
 
-#include "mavwrap_transport.h"
+#include "mavwrap_common.h"
 #include <common/mavlink.h>
 
 
@@ -15,32 +15,13 @@ LOG_MODULE_DECLARE(mavwrap);
 #define IRQ_RX_BUFF_SIZE		32
 
 
-struct mavwrap_uart_data {
-	const struct device *uart_dev;
-
-	mavwrap_transport_rx_cb_t rx_callback;
-	void *user_data;
-
-	uint8_t tx_buf[MAVLINK_MAX_PACKET_LEN];
-	size_t tx_buf_len;
-	size_t tx_buf_pos;
-	struct k_sem tx_sem;
-	bool tx_in_progress;
-
-#ifdef CONFIG_UART_ASYNC_API
-	uint8_t rx_buf[2][CONFIG_MAVWRAP_UART_DMA_RX_BUF_SIZE];
-	uint8_t rx_buf_idx;
-	bool use_dma;
-#endif
-};
-
-
 static void uart_notify_rx(const struct device *dev, uint8_t *buff, size_t len)
 {
-	struct mavwrap_uart_data *data = dev->data;
+	struct mavwrap_data *data = dev->data;
+	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
 
-	if (data->rx_callback && len > 0) {
-		data->rx_callback(dev, buff, len, data->user_data);
+	if (uart_data->rx_callback && len > 0) {
+		uart_data->rx_callback(dev, buff, len, uart_data->user_data);
 	}
 }
 
@@ -51,13 +32,13 @@ static void uart_dma_callback(const struct device *dev,
                                struct uart_event *evt,
                                void *user_data)
 {
- 	struct mavwrap_uart_data *data = dev->data;
-	const struct mavwrap_config *config = dev->config;
-	const struct device *uart_dev = config->transport_dev;
+	const struct device *mavwrap_dev = user_data;
+	struct mavwrap_data *data = mavwrap_dev->data;
+	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
 
 	switch (evt->type) {
 	case UART_RX_RDY:
-		uart_notify_rx(dev,
+		uart_notify_rx(mavwrap_dev,
 		               evt->data.rx.buf + evt->data.rx.offset,
 		               evt->data.rx.len);
 		break;
@@ -66,25 +47,35 @@ static void uart_dma_callback(const struct device *dev,
 		break;
 
 	case UART_TX_DONE:
-		data->tx_in_progress = false;
-		k_sem_give(&data->tx_sem);
+		uart_data->tx_in_progress = false;
+		k_sem_give(&uart_data->tx_sem);
 		break;
 
 	case UART_TX_ABORTED:
-		LOG_ERR("[%s] UART TX aborted", dev->name);
-		data->tx_in_progress = false;
-		k_sem_give(&data->tx_sem);
+		LOG_WRN("[%s] UART TX aborted", mavwrap_dev->name);
+		uart_data->tx_in_progress = false;
+		k_sem_give(&uart_data->tx_sem);
 		break;
 
 	case UART_RX_DISABLED:
-		LOG_WRN("[%s] UART RX disabled", dev->name);
+		LOG_WRN("[%s] UART RX disabled", mavwrap_dev->name);
+		break;
+
+	case UART_RX_STOPPED:
+		LOG_ERR("[%s] UART RX stopped due to error", mavwrap_dev->name);
+		/* Try to re-enable RX */
+		uart_data->rx_buf_idx = 0;
+		uart_rx_enable(dev,
+		               uart_data->rx_buf[0],
+		               CONFIG_MAVWRAP_UART_DMA_RX_BUF_SIZE,
+		               (int32_t)CONFIG_MAVWRAP_UART_RX_TIMEOUT_MS);
 		break;
 
 	case UART_RX_BUF_REQUEST:
-		data->rx_buf_idx = (data->rx_buf_idx + 1) % 2;
-		uart_rx_buf_rsp(uart_dev,
-						data->rx_buf[data->rx_buf_idx],
-						CONFIG_MAVWRAP_UART_DMA_RX_BUF_SIZE);
+		uart_data->rx_buf_idx = (uart_data->rx_buf_idx + 1) % 2;
+		uart_rx_buf_rsp(dev,
+		                uart_data->rx_buf[uart_data->rx_buf_idx],
+		                CONFIG_MAVWRAP_UART_DMA_RX_BUF_SIZE);
 		break;
 
 	default:
@@ -98,7 +89,8 @@ static void uart_dma_callback(const struct device *dev,
 static void uart_irq_callback(const struct device *uart_dev, void *user_data)
 {
 	const struct device *dev = user_data;
-	struct mavwrap_uart_data *data = dev->data;
+	struct mavwrap_data *data = dev->data;
+	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
 
 	if (!uart_irq_update(uart_dev)) {
 		return;
@@ -114,17 +106,23 @@ static void uart_irq_callback(const struct device *uart_dev, void *user_data)
 	}
 
 	if (uart_irq_tx_ready(uart_dev)) {
-		if (data->tx_buf_pos < data->tx_buf_len) {
+		if (uart_data->tx_buf_pos < uart_data->tx_buf_len) {
+			size_t remaining = uart_data->tx_buf_len - uart_data->tx_buf_pos;
 			size_t written = uart_fifo_fill(uart_dev,
-			                                &data->tx_buf[data->tx_buf_pos],
-			                                data->tx_buf_len - data->tx_buf_pos);
-			data->tx_buf_pos += written;
+			                                &uart_data->tx_buf[uart_data->tx_buf_pos],
+			                                remaining);
+			uart_data->tx_buf_pos += written;
+			
+			/* Safety check - should never happen but prevents overflow */
+			if (uart_data->tx_buf_pos > uart_data->tx_buf_len) {
+				uart_data->tx_buf_pos = uart_data->tx_buf_len;
+			}
 		} else {
 			uart_irq_tx_disable(uart_dev);
-			data->tx_buf_len = 0;
-			data->tx_buf_pos = 0;
-			data->tx_in_progress = false;
-			k_sem_give(&data->tx_sem);
+			uart_data->tx_buf_len = 0;
+			uart_data->tx_buf_pos = 0;
+			uart_data->tx_in_progress = false;
+			k_sem_give(&uart_data->tx_sem);
 		}
 	}
 }
@@ -133,7 +131,8 @@ static void uart_irq_callback(const struct device *uart_dev, void *user_data)
 static int mavwrap_uart_init(const struct device *dev)
 {
 	const struct mavwrap_config *config = dev->config;
-	struct mavwrap_uart_data *uart_data = dev->data;
+	struct mavwrap_data *data = dev->data;
+	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
 	const struct device *uart_dev = config->transport_dev;
 
 	if (!device_is_ready(uart_dev)) {
@@ -166,11 +165,12 @@ static int mavwrap_uart_init(const struct device *dev)
 
 
 static int mavwrap_uart_send(const struct device *dev,
-							const uint8_t *buf,
-							size_t len)
+                              const uint8_t *buf,
+                              size_t len)
 {
 	const struct mavwrap_config *config = dev->config;
-	struct mavwrap_uart_data *uart_data = dev->data;
+	struct mavwrap_data *data = dev->data;
+	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
 	const struct device *uart_dev = config->transport_dev;
 	int ret;
 
@@ -179,7 +179,7 @@ static int mavwrap_uart_send(const struct device *dev,
 	}
 
 	if (len > MAVLINK_MAX_PACKET_LEN) {
-		LOG_ERR("[%s] TX buffer too large: %u > %u",
+		LOG_ERR("[%s] TX buffer too large: %zu > %u",
 		        dev->name, len, MAVLINK_MAX_PACKET_LEN);
 		return -ENOMEM;
 	}
@@ -193,22 +193,28 @@ static int mavwrap_uart_send(const struct device *dev,
 #ifdef CONFIG_UART_ASYNC_API
 	if (uart_data->use_dma) {
 		uart_data->tx_in_progress = true;
-		ret = uart_tx(uart_dev, buf, len, K_MSEC(CONFIG_MAVWRAP_UART_TX_TIMEOUT_MS));
+		ret = uart_tx(uart_dev, buf, len, (int32_t)(CONFIG_MAVWRAP_UART_TX_TIMEOUT_MS * 1000));
 
 		if (ret == 0) {
+			/* Success - callback will release semaphore */
 			return 0;
 		}
 
+		/* DMA TX failed - cleanup and fall back to IRQ mode */
 		LOG_WRN("[%s] Async TX failed (%d), switching to IRQ mode", dev->name, ret);
 		uart_data->use_dma = false;
 		uart_data->tx_in_progress = false;
-
+		
+		/* Configure IRQ mode */
 		uart_irq_rx_disable(uart_dev);
 		uart_irq_tx_disable(uart_dev);
 		uart_irq_callback_user_data_set(uart_dev, uart_irq_callback, (void *)dev);
+		
+		/* We still hold the semaphore, so can proceed with IRQ mode */
 	}
 #endif
 
+	/* IRQ mode transmission */
 	memcpy(uart_data->tx_buf, buf, len);
 	uart_data->tx_buf_len = len;
 	uart_data->tx_buf_pos = 0;
@@ -224,7 +230,8 @@ static int mavwrap_uart_set_rx_callback(const struct device *dev,
                                         mavwrap_transport_rx_cb_t callback,
                                         void *user_data)
 {
-	struct mavwrap_uart_data *uart_data = dev->data;
+	struct mavwrap_data *data = dev->data;
+	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
 	const struct mavwrap_config *config = dev->config;
 	const struct device *uart_dev = config->transport_dev;
 
@@ -236,7 +243,7 @@ static int mavwrap_uart_set_rx_callback(const struct device *dev,
 		int ret = uart_rx_enable(uart_dev,
 		                         uart_data->rx_buf[0],
 		                         CONFIG_MAVWRAP_UART_DMA_RX_BUF_SIZE,
-		                         K_MSEC(CONFIG_MAVWRAP_UART_RX_TIMEOUT_MS));
+		                         (int32_t)CONFIG_MAVWRAP_UART_RX_TIMEOUT_MS);
 		if (ret == 0) {
 			uart_rx_buf_rsp(uart_dev,
 			                uart_data->rx_buf[1],
@@ -249,10 +256,13 @@ static int mavwrap_uart_set_rx_callback(const struct device *dev,
 		        dev->name, ret);
 		uart_data->use_dma = false;
 
+		/* Configure IRQ mode */
+		uart_irq_tx_disable(uart_dev);
 		uart_irq_callback_user_data_set(uart_dev, uart_irq_callback, (void *)dev);
 	}
 #endif
 
+	/* Enable IRQ mode RX */
 	uart_irq_rx_enable(uart_dev);
 	LOG_INF("[%s] UART IRQ RX enabled", dev->name);
 
@@ -264,4 +274,6 @@ const struct mavwrap_transport_ops mavwrap_uart_ops = {
 	.init = mavwrap_uart_init,
 	.send = mavwrap_uart_send,
 	.set_rx_callback = mavwrap_uart_set_rx_callback,
+	.set_property = NULL,
+	.get_property = NULL,
 };

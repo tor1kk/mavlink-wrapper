@@ -7,39 +7,16 @@
 #include <zephyr/sys/ring_buffer.h>
 
 #include <mavwrap.h>
-#include "mavwrap_transport.h"
+#include "mavwrap_common.h"
 #include <common/mavlink.h>
 
 
 LOG_MODULE_REGISTER(mavwrap, CONFIG_MAVWRAP_LOG_LEVEL);
 
 
-struct mavwrap_data {
-	const struct device *dev;
-
-	mavlink_message_t dummy_rx_msg;
-	mavlink_status_t dummy_rx_status;
-
-	mavlink_message_t rx_msg;
-	mavlink_status_t rx_status;
-
-	mavwrap_rx_callback_t user_callback;
-	void *user_data;
-
-	struct mavwrap_stats stats;
-	struct k_mutex stats_mutex;
-
-	struct ring_buf rx_rb;
-	uint8_t rx_rb_buf[CONFIG_MAVWRAP_RX_RING_SIZE];
-	struct k_sem rx_sem;
-
-	struct k_thread rx_thread;
-	k_tid_t rx_tid;
-	
-	k_thread_stack_t *rx_stack;
-}; 
-
-
+/**
+ * RX thread - parses MAVLink messages from ring buffer
+ */
 static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 {
 	ARG_UNUSED(p2);
@@ -61,24 +38,24 @@ static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 
 		if (mavlink_parse_char(MAVLINK_COMM_0, rx_byte, 
 		                       &data->rx_msg, &data->rx_status)) {
-			k_mutex_lock(&data->stats_mutex, K_FOREVER);
-			data->stats.rx_packets++;
-			k_mutex_unlock(&data->stats_mutex);
+			atomic_inc(&data->stats.rx_packets);
 
+			/* Call user callback without holding mutex */
 			if (data->user_callback) {
-				data->user_callback(data->dev, &data->rx_msg, data->user_data);
+				data->user_callback(dev, &data->rx_msg, data->user_data);
 			}
 		}
 
 		if (data->rx_status.parse_error > 0) {
-			k_mutex_lock(&data->stats_mutex, K_FOREVER);
-			data->stats.rx_errors++;
-			k_mutex_unlock(&data->stats_mutex);
+			atomic_inc(&data->stats.rx_errors);
 		}
 	}
 }
 
 
+/**
+ * Transport RX handler - called by transport layer
+ */
 static void mavwrap_transport_rx_handler(const struct device *dev,
                                          const uint8_t *buf,
                                          size_t len,
@@ -95,10 +72,7 @@ static void mavwrap_transport_rx_handler(const struct device *dev,
 	if (written < len) {
 		uint32_t dropped = len - written;
 		LOG_WRN("[%s] RX ring overflow, dropped %u bytes", dev->name, dropped);
-
-		k_mutex_lock(&data->stats_mutex, K_FOREVER);
-		data->stats.rx_buff_overflow += dropped;
-		k_mutex_unlock(&data->stats_mutex);
+		atomic_add(&data->stats.rx_buff_overflow, dropped);
 	}
 
 	if (written > 0) {
@@ -107,6 +81,9 @@ static void mavwrap_transport_rx_handler(const struct device *dev,
 }
 
 
+/**
+ * Initialize MAVLink wrapper instance
+ */
 static int mavwrap_init(const struct device *dev)
 {
 	struct mavwrap_data *data = dev->data;
@@ -116,16 +93,19 @@ static int mavwrap_init(const struct device *dev)
 	data->dev = dev;
 	data->rx_stack = config->thread_stack;
 
-	k_mutex_init(&data->stats_mutex);
+	memset(&data->transport_data, 0, sizeof(data->transport_data));
 
-	memset(&data->stats, 0, sizeof(data->stats));
+	atomic_set(&data->stats.rx_packets, 0);
+	atomic_set(&data->stats.tx_packets, 0);
+	atomic_set(&data->stats.rx_errors, 0);
+	atomic_set(&data->stats.tx_errors, 0);
+	atomic_set(&data->stats.rx_buff_overflow, 0);
 
 	memset(&data->rx_msg, 0, sizeof(data->rx_msg));
 	memset(&data->rx_status, 0, sizeof(data->rx_status));
 
-	if (config->transport_type == MAVWRAP_TRANSPORT_UNKNOWN)
-	{
-		LOG_ERR("[%s] Transport type not supported: %d", dev->name, -ENODEV);
+	if (config->transport_type == MAVWRAP_TRANSPORT_UNKNOWN) {
+		LOG_ERR("[%s] Transport type not supported", dev->name);
 		return -ENODEV;
 	}
 
@@ -164,8 +144,8 @@ static int mavwrap_init(const struct device *dev)
 #endif
 
 	ret = config->ops->set_rx_callback(dev,
-									mavwrap_transport_rx_handler,
-									data);
+	                                   mavwrap_transport_rx_handler,
+	                                   data);
 	if (ret < 0) {
 		LOG_ERR("[%s] Failed to set transport RX callback: %d", dev->name, ret);
 		k_thread_abort(data->rx_tid);
@@ -222,15 +202,51 @@ int mavwrap_send_message(const struct device *dev,
 
 	ret = config->ops->send(dev, buf, len);
 
-	k_mutex_lock(&data->stats_mutex, K_FOREVER);
 	if (ret == 0) {
-		data->stats.tx_packets++;
+		atomic_inc(&data->stats.tx_packets);
 	} else {
-		data->stats.tx_errors++;
+		atomic_inc(&data->stats.tx_errors);
 	}
-	k_mutex_unlock(&data->stats_mutex);
 
 	return ret;
+}
+
+
+int mavwrap_set_property(const struct device *dev,
+                         const struct mavwrap_property_value *prop)
+{
+	const struct mavwrap_config *config;
+
+	if (!dev || !prop) {
+		return -EINVAL;
+	}
+
+	config = dev->config;
+
+	if (!config->ops || !config->ops->set_property) {
+		return -ENOTSUP;
+	}
+
+	return config->ops->set_property(dev, prop);
+}
+
+
+int mavwrap_get_property(const struct device *dev,
+                         struct mavwrap_property_value *prop)
+{
+	const struct mavwrap_config *config;
+
+	if (!dev || !prop) {
+		return -EINVAL;
+	}
+
+	config = dev->config;
+
+	if (!config->ops || !config->ops->get_property) {
+		return -ENOTSUP;
+	}
+
+	return config->ops->get_property(dev, prop);
 }
 
 
@@ -245,9 +261,11 @@ int mavwrap_get_stats(const struct device *dev,
 
 	data = dev->data;
 
-	k_mutex_lock(&data->stats_mutex, K_FOREVER);
-	memcpy(stats, &data->stats, sizeof(*stats));
-	k_mutex_unlock(&data->stats_mutex);
+	stats->rx_packets = atomic_get(&data->stats.rx_packets);
+	stats->tx_packets = atomic_get(&data->stats.tx_packets);
+	stats->rx_errors = atomic_get(&data->stats.rx_errors);
+	stats->tx_errors = atomic_get(&data->stats.tx_errors);
+	stats->rx_buff_overflow = atomic_get(&data->stats.rx_buff_overflow);
 
 	return 0;
 }
@@ -263,50 +281,162 @@ int mavwrap_reset_stats(const struct device *dev)
 
 	data = dev->data;
 
-	k_mutex_lock(&data->stats_mutex, K_FOREVER);
-	memset(&data->stats, 0, sizeof(data->stats));
-	k_mutex_unlock(&data->stats_mutex);
+	atomic_set(&data->stats.rx_packets, 0);
+	atomic_set(&data->stats.tx_packets, 0);
+	atomic_set(&data->stats.rx_errors, 0);
+	atomic_set(&data->stats.tx_errors, 0);
+	atomic_set(&data->stats.rx_buff_overflow, 0);
 
 	return 0;
 }
 
 
+/* Transport node */
+#define MAVWRAP_TRANSPORT_NODE(inst) \
+	DT_PHANDLE(DT_DRV_INST(inst), transport)
+
+/* Network interface check */
+#define MAVWRAP_HAS_NETIF(inst) \
+	DT_PROP(DT_DRV_INST(inst), net_interface)
+
+/* UART check */
+#define MAVWRAP_HAS_UART(inst) \
+	DT_PROP(DT_DRV_INST(inst), serial_interface)
+
+/* Transport device */
+#define MAVWRAP_TRANSPORT_DEV(inst) \
+	DEVICE_DT_GET(MAVWRAP_TRANSPORT_NODE(inst))
+
+/* Transport type */
+#define MAVWRAP_TRANSPORT_TYPE(inst) \
+	COND_CODE_1( \
+		MAVWRAP_HAS_UART(inst), \
+		(MAVWRAP_TRANSPORT_UART), \
+		( \
+			COND_CODE_1( \
+				MAVWRAP_HAS_NETIF(inst), \
+				(MAVWRAP_TRANSPORT_NETIF), \
+				(MAVWRAP_TRANSPORT_UNKNOWN) \
+			) \
+		) \
+	)
+
+/* Transport ops */
 #if CONFIG_MAVWRAP_TRANSPORT_UART
 extern const struct mavwrap_transport_ops mavwrap_uart_ops;
 #endif
 
+#if CONFIG_MAVWRAP_TRANSPORT_NETIF
+extern const struct mavwrap_transport_ops mavwrap_netif_ops;
+#endif
 
-#define MAVWRAP_TRANSPORT_DEV(inst) 												\
-	DEVICE_DT_GET(DT_PARENT(DT_DRV_INST(inst)))
+#define MAVWRAP_TRANSPORT_OPS(inst) \
+	COND_CODE_1( \
+		MAVWRAP_HAS_UART(inst), \
+		(&mavwrap_uart_ops), \
+		( \
+			COND_CODE_1( \
+				MAVWRAP_HAS_NETIF(inst), \
+				(&mavwrap_netif_ops), \
+				(NULL) \
+			) \
+		) \
+	)
 
-#define MAVWRAP_TRANSPORT_TYPE(inst) MAVWRAP_TRANSPORT_UART
+/* Network configuration macros */
+#define MAVWRAP_NETIF_DHCP_ENABLE(inst) \
+	DT_PROP(DT_DRV_INST(inst), use_dhcp)
 
-#define MAVWRAP_TRANSPORT_OPS(inst) &mavwrap_uart_ops
+#define MAVWRAP_NETIF_LOCAL_IP(inst) \
+	DT_PROP_OR(DT_DRV_INST(inst), local_ip, "0.0.0.0")
 
-#define MAVWRAP_CONFIG_INIT(inst) 													\
-	{ 																				\
-		.transport_dev = MAVWRAP_TRANSPORT_DEV(inst),			 					\
-		.ops = MAVWRAP_TRANSPORT_OPS(inst), 										\
-		.transport_type = MAVWRAP_TRANSPORT_TYPE(inst), 							\
-		.thread_stack = mavwrap_rx_stack_##inst, 									\
-		.stack_size = K_THREAD_STACK_SIZEOF(mavwrap_rx_stack_##inst), 				\
+#define MAVWRAP_NETIF_REMOTE_IP(inst) \
+	DT_PROP_OR(DT_DRV_INST(inst), remote_ip, "0.0.0.0")
+
+#define MAVWRAP_NETIF_LOCAL_PORT(inst) \
+	DT_PROP_OR(DT_DRV_INST(inst), local_port, 14550)
+
+#define MAVWRAP_NETIF_REMOTE_PORT(inst) \
+	DT_PROP_OR(DT_DRV_INST(inst), remote_port, 14551)
+
+#define MAVWRAP_NETIF_TYPE(inst) \
+	((enum mavwrap_net_type)DT_ENUM_IDX(DT_DRV_INST(inst), net_type))
+
+/* UART config - empty for now */
+#define MAVWRAP_UART_CONFIG_INIT(inst) \
+	{ \
 	}
 
-#define MAVWRAP_DEVICE_INIT(inst) 													\
-	K_THREAD_STACK_DEFINE(mavwrap_rx_stack_##inst, CONFIG_MAVWRAP_RX_STACK_SIZE);	\
-																					\
-	static struct mavwrap_data mavwrap_data_##inst; 								\
-																					\
-	static const struct mavwrap_config mavwrap_config_##inst = 						\
-		MAVWRAP_CONFIG_INIT(inst); 													\
-																					\
-	DEVICE_DT_INST_DEFINE(inst, 													\
-	                      mavwrap_init,		 										\
-	                      NULL, 													\
-	                      &mavwrap_data_##inst, 									\
-	                      &mavwrap_config_##inst, 									\
-	                      POST_KERNEL, 												\
-	                      CONFIG_MAVWRAP_INIT_PRIORITY, 							\
-	                      NULL);
+/* Network config */
+#define MAVWRAP_NETIF_CONFIG_INIT(inst) \
+	{ \
+		.local_ip = MAVWRAP_NETIF_LOCAL_IP(inst), \
+		.remote_ip = MAVWRAP_NETIF_REMOTE_IP(inst), \
+		.local_port = MAVWRAP_NETIF_LOCAL_PORT(inst), \
+		.remote_port = MAVWRAP_NETIF_REMOTE_PORT(inst), \
+		.net_type = MAVWRAP_NETIF_TYPE(inst), \
+		.dhcp_enabled = MAVWRAP_NETIF_DHCP_ENABLE(inst), \
+	}
+
+/* Transport config init */
+#define MAVWRAP_TRANSPORT_CONFIG_INIT_UART(inst) \
+	.uart = MAVWRAP_UART_CONFIG_INIT(inst)
+
+#define MAVWRAP_TRANSPORT_CONFIG_INIT_NETIF(inst) \
+	.netif = MAVWRAP_NETIF_CONFIG_INIT(inst)
+
+#define MAVWRAP_TRANSPORT_CONFIG_INIT(inst) \
+	COND_CODE_1( \
+		MAVWRAP_HAS_UART(inst), \
+		(MAVWRAP_TRANSPORT_CONFIG_INIT_UART(inst)), \
+		( \
+			COND_CODE_1( \
+				MAVWRAP_HAS_NETIF(inst), \
+				(MAVWRAP_TRANSPORT_CONFIG_INIT_NETIF(inst)), \
+				() \
+			) \
+		) \
+	)
+
+/* Main config */
+#define MAVWRAP_CONFIG_INIT(inst) \
+	{ \
+		.transport_dev = MAVWRAP_TRANSPORT_DEV(inst), \
+		.ops = MAVWRAP_TRANSPORT_OPS(inst), \
+		.transport_type = MAVWRAP_TRANSPORT_TYPE(inst), \
+		.thread_stack = mavwrap_rx_stack_##inst, \
+		.stack_size = K_THREAD_STACK_SIZEOF(mavwrap_rx_stack_##inst), \
+		.transport_config = { \
+			MAVWRAP_TRANSPORT_CONFIG_INIT(inst) \
+		} \
+	}
+
+/* Validation */
+#define MAVWRAP_VALIDATE_DT(inst) \
+	BUILD_ASSERT( \
+		DT_NODE_HAS_PROP(DT_DRV_INST(inst), transport), \
+		"mavlink-wrapper: 'transport' phandle is required"); \
+	BUILD_ASSERT( \
+		MAVWRAP_HAS_UART(inst) || MAVWRAP_HAS_NETIF(inst), \
+		"mavlink-wrapper: unknown transport type");
+
+/* Device init */
+#define MAVWRAP_DEVICE_INIT(inst) \
+	MAVWRAP_VALIDATE_DT(inst); \
+	K_THREAD_STACK_DEFINE( \
+		mavwrap_rx_stack_##inst, \
+		CONFIG_MAVWRAP_RX_STACK_SIZE); \
+	static struct mavwrap_data mavwrap_data_##inst; \
+	static const struct mavwrap_config mavwrap_config_##inst = \
+		MAVWRAP_CONFIG_INIT(inst); \
+	DEVICE_DT_INST_DEFINE( \
+		inst, \
+		mavwrap_init, \
+		NULL, \
+		&mavwrap_data_##inst, \
+		&mavwrap_config_##inst, \
+		POST_KERNEL, \
+		CONFIG_MAVWRAP_INIT_PRIORITY, \
+		NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(MAVWRAP_DEVICE_INIT)

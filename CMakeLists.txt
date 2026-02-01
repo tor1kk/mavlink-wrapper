@@ -12,4 +12,9 @@ zephyr_library_sources_ifdef(CONFIG_MAVWRAP_TRANSPORT_UART
     src/mavwrap_uart.c
 )
 
+zephyr_library_sources_ifdef(CONFIG_MAVWRAP_TRANSPORT_NETIF 
+    src/mavwrap_netif_common.c
+    src/mavwrap_transport_udp.c
+)
+
 zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/mavlink/)
