@@ -1,8 +1,22 @@
 # MAVLink Wrapper
 
-MAVLink communication wrapper for Zephyr. Supports UDP with runtime reconfiguration.
+MAVLink communication wrapper module for Zephyr RTOS.
 
-### Configure
+## Adding the module
+
+Add the module to your project's `west.yaml`:
+
+```yaml
+projects:
+    -   name: mavlink-wrapper
+        url: https://github.com/tor1kk/mavlink-wrapper.git
+        revision: main
+        path: modules/mavlink-wrapper
+        submodules: true
+
+```
+
+## Configure
 
 **prj.conf:**
 ```ini
@@ -14,7 +28,7 @@ CONFIG_NET_UDP=y
 CONFIG_NET_DHCPV4=y  # optional
 ```
 
-**DeviceTree**
+### DeviceTree
 
 **UDP / network interface**
 ```dts
@@ -42,7 +56,7 @@ mavlink: mavlink-wrapper {
 };
 ```
 
-### Usage
+## Usage
 
 ```c
 #include <mavwrap.h>
