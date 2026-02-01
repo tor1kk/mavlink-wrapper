@@ -14,7 +14,9 @@ CONFIG_NET_UDP=y
 CONFIG_NET_DHCPV4=y  # optional
 ```
 
-**app.overlay:**
+**DeviceTree**
+
+**UDP / network interface**
 ```dts
 / {
     mavlink: mavlink-wrapper {
@@ -31,7 +33,16 @@ CONFIG_NET_DHCPV4=y  # optional
 };
 ```
 
-### Use
+**Serial interface**
+```dts
+mavlink: mavlink-wrapper {
+    compatible = "mavlink-wrapper";
+    transport = <&usart1>;
+    serial-interface;
+};
+```
+
+### Usage
 
 ```c
 #include <mavwrap.h>
