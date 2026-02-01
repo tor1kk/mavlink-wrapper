@@ -1,8 +1,8 @@
 menuconfig MAVWRAP
-	bool "MAVLink Wrapper Driver"
+	bool "MAVLink Wrapper"
 	help
-	  Enable MAVLink protocol wrapper driver with transport abstraction.
-	  Supports UART and Network (UDP/TCP) transports.
+	  Enable MAVLink communication wrapper with support for
+	  multiple transport types (UART, UDP network).
 
 if MAVWRAP
 
@@ -18,92 +18,108 @@ config MAVWRAP_LOG_LEVEL
 	    3 = INFO
 	    4 = DEBUG
 
-config MAVWRAP_INIT_PRIORITY
-	int "MAVLink Wrapper Initialization Priority"
-	default 90
-	range 0 99
+config MAVWRAP_TRANSPORT_UART
+	bool "UART Transport Support"
+	depends on SERIAL
 	help
-	  Initialization priority for MAVLink wrapper driver.
-	  Should be initialized after transport devices (UART, Network).
+	  Enable UART transport for MAVLink communication.
 
-config MAVWRAP_RX_RING_SIZE
-	int "RX Ring Buffer Size (bytes)"
-	default 1024
-	range 512 8192
+config MAVWRAP_TRANSPORT_NETIF
+	bool "Network Transport Support"
+	depends on NETWORKING
+	select NET_CONTEXT
+	select NET_SOCKETS
+	select NET_IPV4
+	select NET_UDP
 	help
-	  Size of the ring buffer for receiving MAVLink data.
-	  Should be at least 2x MAVLINK_MAX_PACKET_LEN (263 bytes).
-	  Larger buffers handle burst traffic better.
+	  Enable network transport for MAVLink communication.
 
 config MAVWRAP_RX_STACK_SIZE
-	int "RX Thread Stack Size (bytes)"
+	int "RX Thread Stack Size"
 	default 2048
 	range 1024 8192
 	help
-	  Stack size for the MAVLink RX processing thread.
+	  Stack size for the MAVLink RX parsing thread.
+	  Increase if you experience stack overflows.
 
 config MAVWRAP_RX_THREAD_PRIORITY
 	int "RX Thread Priority"
 	default 5
-	range 0 15
+	range 1 99
 	help
-	  Priority of the MAVLink RX processing thread.
+	  Priority for the MAVLink RX parsing thread.
 	  Lower values = higher priority.
 
-
-config MAVWRAP_TRANSPORT_UART
-	bool "Enable UART Transport"
-	default y
-	depends on UART_INTERRUPT_DRIVEN || UART_ASYNC_API
+config MAVWRAP_RX_RING_SIZE
+	int "RX Ring Buffer Size"
+	default 1024
+	range 256 4096
 	help
-	  Enable UART transport support for MAVLink.
-	  Requires either UART interrupt or async API support.
+	  Size of the RX ring buffer in bytes.
+	  Increase if you experience buffer overflows with high-rate messages.
+
+config MAVWRAP_UART_DMA_RX_BUF_SIZE
+	int "UART DMA RX Buffer Size"
+	default 512
+	range 128 2048
+	depends on MAVWRAP_TRANSPORT_UART && UART_ASYNC_API
+	help
+	  Size of each UART DMA RX buffer (double buffered).
 
 if MAVWRAP_TRANSPORT_UART
 
 config MAVWRAP_UART_TX_TIMEOUT_MS
-	int "UART TX Timeout (milliseconds)"
+	int "UART TX Timeout (ms)"
 	default 1000
-	range 100 10000
+	range 100 5000
 	help
-	  Timeout for UART transmission operations.
+	  Timeout in milliseconds for UART transmission.
+	  Applies to both DMA and IRQ modes.
 
 config MAVWRAP_UART_RX_TIMEOUT_MS
-	int "UART RX Timeout (milliseconds)"
+	int "UART RX Timeout (ms)"
 	default 100
-	range 10 5000
-	help
-	  Timeout for UART async RX operations (DMA mode only).
-
-config MAVWRAP_UART_DMA_RX_BUF_SIZE
-	int "UART DMA RX Buffer Size (bytes)"
-	default 512
-	range 263 2048
+	range 10 1000
 	depends on UART_ASYNC_API
 	help
-	  Size of each DMA RX buffer (double-buffered).
-	  Must be >= MAVLINK_MAX_PACKET_LEN (263 bytes).
+	  Timeout in milliseconds for UART async RX mode.
+	  Used for flushing partial packets.
+
+config MAVWRAP_UART_IRQ_RX_BUF_SIZE
+	int "UART IRQ RX Buffer Size"
+	default 32
+	range 16 256
+	help
+	  Size of temporary RX buffer for UART IRQ mode.
+	  Data is immediately copied to ring buffer.
+	  Larger values may improve performance on high baud rates.
 
 endif # MAVWRAP_TRANSPORT_UART
 
-
-config MAVWRAP_TRANSPORT_NETIF
-	bool "Enable Network Transport"
-	default y
-	depends on NETWORKING
-	select NET_UDP
-	select NET_SOCKETS
+config MAVWRAP_INIT_PRIORITY
+	int "Initialization Priority"
+	default 80
+	range 1 99
 	help
-	  Enable network transport (UDP/TCP) support for MAVLink.
+	  Initialization priority for MAVLink wrapper devices.
+	  Must be initialized after network subsystem.
 
 if MAVWRAP_TRANSPORT_NETIF
 
-config MAVWRAP_NETIF_DHCP
-	bool "Enable DHCP Support"
-	default y
-	depends on NET_DHCPV4
+config MAVWRAP_NETIF_CONNECT_TIMEOUT_MS
+	int "Network Connection Timeout (ms)"
+	default 5000
+	range 1000 30000
 	help
-	  Enable DHCP client support for network transport.
+	  Timeout in milliseconds for network connection and DHCP.
+	  Increase if your network takes longer to initialize.
+
+config MAVWRAP_NETIF_SEND_TIMEOUT_MS
+	int "Network Send Timeout (ms)"
+	default 1000
+	range 100 5000
+	help
+	  Timeout in milliseconds for sending packets over network.
 
 endif # MAVWRAP_TRANSPORT_NETIF
 

@@ -261,11 +261,12 @@ int mavwrap_get_stats(const struct device *dev,
 
 	data = dev->data;
 
-	stats->rx_packets = atomic_get(&data->stats.rx_packets);
-	stats->tx_packets = atomic_get(&data->stats.tx_packets);
-	stats->rx_errors = atomic_get(&data->stats.rx_errors);
-	stats->tx_errors = atomic_get(&data->stats.tx_errors);
-	stats->rx_buff_overflow = atomic_get(&data->stats.rx_buff_overflow);
+	/* Convert atomic_t to uint32_t */
+	stats->rx_packets = (uint32_t)atomic_get(&data->stats.rx_packets);
+	stats->tx_packets = (uint32_t)atomic_get(&data->stats.tx_packets);
+	stats->rx_errors = (uint32_t)atomic_get(&data->stats.rx_errors);
+	stats->tx_errors = (uint32_t)atomic_get(&data->stats.tx_errors);
+	stats->rx_buff_overflow = (uint32_t)atomic_get(&data->stats.rx_buff_overflow);
 
 	return 0;
 }

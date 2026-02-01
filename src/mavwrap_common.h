@@ -2,12 +2,12 @@
 #define MAVWRAP_COMMON_H
 
 #include <zephyr/device.h>
-#include <zephyr/sys/atomic.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_core.h>
 #include <zephyr/net/net_context.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/sys/atomic.h>
 
 #include <stddef.h>
 #include <stdint.h>

@@ -11,9 +11,6 @@
 LOG_MODULE_DECLARE(mavwrap);
 
 
-#define NETIF_CONNECT_TIMEOUT_MS 5000
-
-
 /* Forward declaration of UDP ops */
 extern const struct mavwrap_net_ops mavwrap_udp_ops;
 
@@ -279,7 +276,7 @@ static int mavwrap_netif_set_rx_callback(const struct device *dev,
 	netif_data->user_data = user_data;
 
 	/* Wait for network to be ready */
-	ret = mavwrap_netif_wait_for_network(dev, NETIF_CONNECT_TIMEOUT_MS);
+	ret = mavwrap_netif_wait_for_network(dev, CONFIG_MAVWRAP_NETIF_CONNECT_TIMEOUT_MS);
 	if (ret < 0) {
 		return ret;
 	}

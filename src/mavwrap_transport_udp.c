@@ -15,9 +15,6 @@
 LOG_MODULE_DECLARE(mavwrap);
 
 
-#define UDP_SEND_TIMEOUT_MS 1000
-
-
 /**
  * UDP receive callback
  */
@@ -168,7 +165,7 @@ static int mavwrap_udp_send(const struct device *dev,
 	                         (struct sockaddr *)&netif_data->runtime_config.remote_addr,
 	                         sizeof(netif_data->runtime_config.remote_addr),
 	                         NULL,
-	                         K_MSEC(UDP_SEND_TIMEOUT_MS),
+	                         K_MSEC(CONFIG_MAVWRAP_NETIF_SEND_TIMEOUT_MS),
 	                         NULL);
 
 	if (ret < 0) {
