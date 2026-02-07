@@ -35,17 +35,16 @@ typedef void (*mavwrap_rx_callback_t)(const struct device *dev,
 
 /**
  * @brief MAVLink statistics
- * 
- * Note: Statistics use atomic_t for thread-safe updates.
- * Values can be read using mavwrap_get_stats() which returns
- * snapshot of current values.
+ *
+ * Note: Statistics are updated atomically for thread-safety.
+ * Values represent snapshot at the time of mavwrap_get_stats() call.
  */
 struct mavwrap_stats {
-	atomic_t rx_packets;        /**< Total received packets */
-	atomic_t tx_packets;        /**< Total transmitted packets */
-	atomic_t rx_errors;         /**< RX parse errors */
-	atomic_t tx_errors;         /**< TX errors */
-	atomic_t rx_buff_overflow;  /**< RX ring buffer overflows */
+	uint32_t rx_packets;        /**< Total received packets */
+	uint32_t tx_packets;        /**< Total transmitted packets */
+	uint32_t rx_errors;         /**< RX parse errors */
+	uint32_t tx_errors;         /**< TX errors */
+	uint32_t rx_buff_overflow;  /**< RX ring buffer overflows */
 };
 
 /**

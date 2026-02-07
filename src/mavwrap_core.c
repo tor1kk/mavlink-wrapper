@@ -8,11 +8,10 @@
 
 #include <mavwrap.h>
 #include "mavwrap_common.h"
+#include "mavwrap_dt.h"
 #include <common/mavlink.h>
 
-
 LOG_MODULE_REGISTER(mavwrap, CONFIG_MAVWRAP_LOG_LEVEL);
-
 
 /**
  * RX thread - parses MAVLink messages from ring buffer
@@ -93,7 +92,7 @@ static int mavwrap_init(const struct device *dev)
 	data->dev = dev;
 	data->rx_stack = config->thread_stack;
 
-	memset(&data->transport_data, 0, sizeof(data->transport_data));
+	/* Transport data is already zero-initialized in static allocation */
 
 	atomic_set(&data->stats.rx_packets, 0);
 	atomic_set(&data->stats.tx_packets, 0);
@@ -131,11 +130,6 @@ static int mavwrap_init(const struct device *dev)
 		(void *)dev, NULL, NULL,
 		CONFIG_MAVWRAP_RX_THREAD_PRIORITY,
 		0, K_NO_WAIT);
-
-	if (!data->rx_tid) {
-		LOG_ERR("[%s] Failed to create RX thread", dev->name);
-		return -ENOMEM;
-	}
 
 #ifdef CONFIG_THREAD_NAME
 	char thread_name[CONFIG_THREAD_MAX_NAME_LEN];
@@ -292,152 +286,5 @@ int mavwrap_reset_stats(const struct device *dev)
 }
 
 
-/* Transport node */
-#define MAVWRAP_TRANSPORT_NODE(inst) \
-	DT_PHANDLE(DT_DRV_INST(inst), transport)
-
-/* Network interface check */
-#define MAVWRAP_HAS_NETIF(inst) \
-	DT_PROP(DT_DRV_INST(inst), net_interface)
-
-/* UART check */
-#define MAVWRAP_HAS_UART(inst) \
-	DT_PROP(DT_DRV_INST(inst), serial_interface)
-
-/* Transport device */
-#define MAVWRAP_TRANSPORT_DEV(inst) \
-	DEVICE_DT_GET(MAVWRAP_TRANSPORT_NODE(inst))
-
-/* Transport type */
-#define MAVWRAP_TRANSPORT_TYPE(inst) \
-	COND_CODE_1( \
-		MAVWRAP_HAS_UART(inst), \
-		(MAVWRAP_TRANSPORT_UART), \
-		( \
-			COND_CODE_1( \
-				MAVWRAP_HAS_NETIF(inst), \
-				(MAVWRAP_TRANSPORT_NETIF), \
-				(MAVWRAP_TRANSPORT_UNKNOWN) \
-			) \
-		) \
-	)
-
-/* Transport ops */
-#if CONFIG_MAVWRAP_TRANSPORT_UART
-extern const struct mavwrap_transport_ops mavwrap_uart_ops;
-#endif
-
-#if CONFIG_MAVWRAP_TRANSPORT_NETIF
-extern const struct mavwrap_transport_ops mavwrap_netif_ops;
-#endif
-
-#define MAVWRAP_TRANSPORT_OPS(inst) \
-	COND_CODE_1( \
-		MAVWRAP_HAS_UART(inst), \
-		(&mavwrap_uart_ops), \
-		( \
-			COND_CODE_1( \
-				MAVWRAP_HAS_NETIF(inst), \
-				(&mavwrap_netif_ops), \
-				(NULL) \
-			) \
-		) \
-	)
-
-/* Network configuration macros */
-#define MAVWRAP_NETIF_DHCP_ENABLE(inst) \
-	DT_PROP(DT_DRV_INST(inst), use_dhcp)
-
-#define MAVWRAP_NETIF_LOCAL_IP(inst) \
-	DT_PROP_OR(DT_DRV_INST(inst), local_ip, "0.0.0.0")
-
-#define MAVWRAP_NETIF_REMOTE_IP(inst) \
-	DT_PROP_OR(DT_DRV_INST(inst), remote_ip, "0.0.0.0")
-
-#define MAVWRAP_NETIF_LOCAL_PORT(inst) \
-	DT_PROP_OR(DT_DRV_INST(inst), local_port, 14550)
-
-#define MAVWRAP_NETIF_REMOTE_PORT(inst) \
-	DT_PROP_OR(DT_DRV_INST(inst), remote_port, 14551)
-
-#define MAVWRAP_NETIF_TYPE(inst) \
-	((enum mavwrap_net_type)DT_ENUM_IDX(DT_DRV_INST(inst), net_type))
-
-/* UART config - empty for now */
-#define MAVWRAP_UART_CONFIG_INIT(inst) \
-	{ \
-	}
-
-/* Network config */
-#define MAVWRAP_NETIF_CONFIG_INIT(inst) \
-	{ \
-		.local_ip = MAVWRAP_NETIF_LOCAL_IP(inst), \
-		.remote_ip = MAVWRAP_NETIF_REMOTE_IP(inst), \
-		.local_port = MAVWRAP_NETIF_LOCAL_PORT(inst), \
-		.remote_port = MAVWRAP_NETIF_REMOTE_PORT(inst), \
-		.net_type = MAVWRAP_NETIF_TYPE(inst), \
-		.dhcp_enabled = MAVWRAP_NETIF_DHCP_ENABLE(inst), \
-	}
-
-/* Transport config init */
-#define MAVWRAP_TRANSPORT_CONFIG_INIT_UART(inst) \
-	.uart = MAVWRAP_UART_CONFIG_INIT(inst)
-
-#define MAVWRAP_TRANSPORT_CONFIG_INIT_NETIF(inst) \
-	.netif = MAVWRAP_NETIF_CONFIG_INIT(inst)
-
-#define MAVWRAP_TRANSPORT_CONFIG_INIT(inst) \
-	COND_CODE_1( \
-		MAVWRAP_HAS_UART(inst), \
-		(MAVWRAP_TRANSPORT_CONFIG_INIT_UART(inst)), \
-		( \
-			COND_CODE_1( \
-				MAVWRAP_HAS_NETIF(inst), \
-				(MAVWRAP_TRANSPORT_CONFIG_INIT_NETIF(inst)), \
-				() \
-			) \
-		) \
-	)
-
-/* Main config */
-#define MAVWRAP_CONFIG_INIT(inst) \
-	{ \
-		.transport_dev = MAVWRAP_TRANSPORT_DEV(inst), \
-		.ops = MAVWRAP_TRANSPORT_OPS(inst), \
-		.transport_type = MAVWRAP_TRANSPORT_TYPE(inst), \
-		.thread_stack = mavwrap_rx_stack_##inst, \
-		.stack_size = K_THREAD_STACK_SIZEOF(mavwrap_rx_stack_##inst), \
-		.transport_config = { \
-			MAVWRAP_TRANSPORT_CONFIG_INIT(inst) \
-		} \
-	}
-
-/* Validation */
-#define MAVWRAP_VALIDATE_DT(inst) \
-	BUILD_ASSERT( \
-		DT_NODE_HAS_PROP(DT_DRV_INST(inst), transport), \
-		"mavlink-wrapper: 'transport' phandle is required"); \
-	BUILD_ASSERT( \
-		MAVWRAP_HAS_UART(inst) || MAVWRAP_HAS_NETIF(inst), \
-		"mavlink-wrapper: unknown transport type");
-
-/* Device init */
-#define MAVWRAP_DEVICE_INIT(inst) \
-	MAVWRAP_VALIDATE_DT(inst); \
-	K_THREAD_STACK_DEFINE( \
-		mavwrap_rx_stack_##inst, \
-		CONFIG_MAVWRAP_RX_STACK_SIZE); \
-	static struct mavwrap_data mavwrap_data_##inst; \
-	static const struct mavwrap_config mavwrap_config_##inst = \
-		MAVWRAP_CONFIG_INIT(inst); \
-	DEVICE_DT_INST_DEFINE( \
-		inst, \
-		mavwrap_init, \
-		NULL, \
-		&mavwrap_data_##inst, \
-		&mavwrap_config_##inst, \
-		POST_KERNEL, \
-		CONFIG_MAVWRAP_INIT_PRIORITY, \
-		NULL);
-
+/* Devicetree-based device instantiation */
 DT_INST_FOREACH_STATUS_OKAY(MAVWRAP_DEVICE_INIT)

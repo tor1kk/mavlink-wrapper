@@ -5,15 +5,11 @@
 #include <zephyr/logging/log.h>
 
 #include "mavwrap_common.h"
-#include "mavwrap_netif_common.h"
-
 
 LOG_MODULE_DECLARE(mavwrap);
 
-
 /* Forward declaration of UDP ops */
 extern const struct mavwrap_net_ops mavwrap_udp_ops;
-
 
 /**
  * Get network operations for specific type
@@ -27,6 +23,7 @@ const struct mavwrap_net_ops* mavwrap_net_get_ops(enum mavwrap_net_type type)
 		return NULL;
 	}
 }
+
 
 /**
  * Network management event handler (DHCP)
@@ -77,7 +74,7 @@ static int netif_wait_for_link(struct mavwrap_netif_data *netif_data,
 int mavwrap_netif_wait_for_network(const struct device *dev, int32_t timeout_ms)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	int ret;
 
 	if (!netif_data->dhcp_enabled) {
@@ -108,9 +105,9 @@ int mavwrap_netif_wait_for_network(const struct device *dev, int32_t timeout_ms)
 int mavwrap_netif_setup_ip(const struct device *dev)
 {
 	const struct mavwrap_config *config = dev->config;
-	const struct mavwrap_netif_config *netif_config = &config->transport_config.netif;
+	const struct mavwrap_netif_config *netif_config = config->transport_config;
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 
 	k_sem_init(&netif_data->net_ready_sem, 0, 1);
 
@@ -130,7 +127,9 @@ int mavwrap_netif_setup_ip(const struct device *dev)
 		/* Static IP configuration */
 		LOG_INF("[%s] DHCP disabled, using static IP", dev->name);
 
-		net_if_up(netif_data->iface);
+		if (!net_if_is_up(netif_data->iface)) {
+			net_if_up(netif_data->iface);
+		}
 
 		struct in_addr addr;
 		if (zsock_inet_pton(AF_INET, netif_config->local_ip, &addr) != 1) {
@@ -154,9 +153,9 @@ int mavwrap_netif_setup_ip(const struct device *dev)
 static int mavwrap_netif_init(const struct device *dev)
 {
 	const struct mavwrap_config *config = dev->config;
-	const struct mavwrap_netif_config *netif_config = &config->transport_config.netif;
+	const struct mavwrap_netif_config *netif_config = config->transport_config;
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	const struct device *netif_dev = config->transport_dev;
 	int ret;
 
@@ -172,6 +171,7 @@ static int mavwrap_netif_init(const struct device *dev)
 		LOG_ERR("[%s] Failed to get network interface", dev->name);
 		return -ENODEV;
 	}
+
 
 	/* Initialize state */
 	netif_data->ctx = NULL;
@@ -190,6 +190,7 @@ static int mavwrap_netif_init(const struct device *dev)
 		LOG_ERR("[%s] Unsupported network type: %d", dev->name, netif_data->net_type);
 		return -ENOTSUP;
 	}
+
 
 	/* Initialize runtime config from DT config */
 	netif_data->runtime_config.local_port = netif_config->local_port;
@@ -217,6 +218,7 @@ static int mavwrap_netif_init(const struct device *dev)
 		return -EINVAL;
 	}
 
+
 	/* Copy DT config to runtime config */
 	memcpy(&netif_data->runtime_config.local_addr,
 	       &netif_data->dt_config.local_addr,
@@ -230,6 +232,7 @@ static int mavwrap_netif_init(const struct device *dev)
 	if (ret < 0) {
 		return ret;
 	}
+
 
 	/* Call network-type-specific init */
 	if (netif_data->ops->init) {
@@ -249,12 +252,13 @@ static int mavwrap_netif_init(const struct device *dev)
 	return 0;
 }
 
+
 static int mavwrap_netif_send(const struct device *dev,
                                const uint8_t *buf,
                                size_t len)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 
 	if (!netif_data->ops || !netif_data->ops->send) {
 		return -ENOTSUP;
@@ -269,7 +273,7 @@ static int mavwrap_netif_set_rx_callback(const struct device *dev,
                                          void *user_data)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	int ret;
 
 	netif_data->rx_callback = callback;
@@ -280,6 +284,7 @@ static int mavwrap_netif_set_rx_callback(const struct device *dev,
 	if (ret < 0) {
 		return ret;
 	}
+
 
 	/* Connect using network-type-specific ops */
 	if (!netif_data->ops || !netif_data->ops->connect) {
@@ -301,13 +306,14 @@ static int mavwrap_netif_set_property(const struct device *dev,
                                       const struct mavwrap_property_value *prop)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	struct mavwrap_net_property_value net_prop;
 	int ret;
 
 	if (!netif_data->ops || !netif_data->ops->set_property) {
 		return -ENOTSUP;
 	}
+
 
 	/* Convert generic property to network property */
 	switch (prop->type) {
@@ -337,13 +343,14 @@ static int mavwrap_netif_get_property(const struct device *dev,
                                       struct mavwrap_property_value *prop)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	struct mavwrap_net_property_value net_prop;
 	int ret;
 
 	if (!netif_data->ops || !netif_data->ops->get_property) {
 		return -ENOTSUP;
 	}
+
 
 	/* Convert generic property type to network property type */
 	switch (prop->type) {
@@ -364,6 +371,7 @@ static int mavwrap_netif_get_property(const struct device *dev,
 	if (ret < 0) {
 		return ret;
 	}
+
 
 	/* Convert back to generic property */
 	switch (net_prop.prop) {

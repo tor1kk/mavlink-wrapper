@@ -8,12 +8,9 @@
 #include <zephyr/kernel.h>
 
 #include "mavwrap_common.h"
-#include "mavwrap_netif_common.h"
 #include <common/mavlink.h>
 
-
 LOG_MODULE_DECLARE(mavwrap);
-
 
 /**
  * UDP receive callback
@@ -27,7 +24,7 @@ static void udp_recv_callback(struct net_context *context,
 {
 	const struct device *dev = user_data;
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	uint8_t rx_buf[MAVLINK_MAX_PACKET_LEN];
 	size_t len;
 	int ret;
@@ -91,7 +88,7 @@ static int mavwrap_udp_init(const struct device *dev)
 static int mavwrap_udp_connect(const struct device *dev)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	int ret;
 
 	/* Create UDP socket */
@@ -100,6 +97,7 @@ static int mavwrap_udp_connect(const struct device *dev)
 		LOG_ERR("[%s] Failed to get UDP context: %d", dev->name, ret);
 		return ret;
 	}
+
 
 	/* Bind to local address */
 	ret = net_context_bind(netif_data->ctx,
@@ -111,6 +109,7 @@ static int mavwrap_udp_connect(const struct device *dev)
 		netif_data->ctx = NULL;
 		return ret;
 	}
+
 
 	/* Setup receive callback */
 	ret = net_context_recv(netif_data->ctx,
@@ -141,7 +140,7 @@ static int mavwrap_udp_send(const struct device *dev,
                             size_t len)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	int ret;
 
 	if (!buf || len == 0 || len > MAVLINK_MAX_PACKET_LEN) {
@@ -157,6 +156,7 @@ static int mavwrap_udp_send(const struct device *dev,
 		LOG_ERR("[%s] UDP not connected", dev->name);
 		return -ENOTCONN;
 	}
+
 
 	/* Send to configured remote address */
 	ret = net_context_sendto(netif_data->ctx,
@@ -183,7 +183,7 @@ static int mavwrap_udp_send(const struct device *dev,
 static int mavwrap_udp_reconnect(const struct device *dev)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 
 	LOG_INF("[%s] Reconnecting UDP socket...", dev->name);
 
@@ -193,6 +193,7 @@ static int mavwrap_udp_reconnect(const struct device *dev)
 		netif_data->ctx = NULL;
 		netif_data->connected = false;
 	}
+
 
 	/* Re-create socket with updated configuration */
 	return mavwrap_udp_connect(dev);
@@ -207,7 +208,7 @@ static int mavwrap_udp_set_property(const struct device *dev,
                                     bool apply_immediately)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	bool need_reconnect = false;
 	int ret = 0;
 
@@ -248,6 +249,7 @@ static int mavwrap_udp_set_property(const struct device *dev,
 		goto unlock;
 	}
 
+
 	/* Apply changes if requested */
 	if (apply_immediately && need_reconnect) {
 		enum mavwrap_net_state old_state = atomic_get(&netif_data->state);
@@ -278,7 +280,7 @@ static int mavwrap_udp_get_property(const struct device *dev,
                                     struct mavwrap_net_property_value *prop)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_netif_data *netif_data = &data->transport_data.netif;
+	struct mavwrap_netif_data *netif_data = data->transport_data;
 	int ret = 0;
 
 	k_mutex_lock(&netif_data->config_mutex, K_FOREVER);

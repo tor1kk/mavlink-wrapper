@@ -1,29 +1,36 @@
+/**
+ * @file mavwrap_common.h
+ * @brief MAVLink wrapper common definitions
+ *
+ * This file contains transport-agnostic common structures and definitions.
+ * Transport-specific headers are conditionally included based on enabled transports.
+ */
+
 #ifndef MAVWRAP_COMMON_H
 #define MAVWRAP_COMMON_H
 
 #include <zephyr/device.h>
-#include <zephyr/net/net_if.h>
-#include <zephyr/net/net_core.h>
-#include <zephyr/net/net_context.h>
-#include <zephyr/net/net_mgmt.h>
-#include <zephyr/net/socket.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/ring_buffer.h>
+#include <zephyr/kernel.h>
 
 #include <stddef.h>
 #include <stdint.h>
 
 #include "mavwrap.h"
-#include "mavwrap_netif_common.h"
 
+/* Conditionally include transport-specific headers */
+#ifdef CONFIG_MAVWRAP_TRANSPORT_UART
+#include "mavwrap_uart.h"
+#endif
 
-/**
- * Transport RX callback
- */
-typedef void (*mavwrap_transport_rx_cb_t)(const struct device *dev,
-                                          const uint8_t *buf,
-                                          size_t len,
-                                          void *user_data);
+#ifdef CONFIG_MAVWRAP_TRANSPORT_NETIF
+#include "mavwrap_netif.h"
+#endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * Transport operations interface
@@ -40,7 +47,6 @@ struct mavwrap_transport_ops {
 	                    struct mavwrap_property_value *prop);
 };
 
-
 /**
  * Transport type
  */
@@ -50,73 +56,19 @@ enum mavwrap_transport_type {
 	MAVWRAP_TRANSPORT_UNKNOWN,
 };
 
-
 /**
- * UART transport data
+ * Internal statistics using atomic types for thread-safety
  */
-struct mavwrap_uart_data {
-	const struct device *uart_dev;
-
-	mavwrap_transport_rx_cb_t rx_callback;
-	void *user_data;
-
-	uint8_t tx_buf[MAVLINK_MAX_PACKET_LEN];
-	size_t tx_buf_len;
-	size_t tx_buf_pos;
-	struct k_sem tx_sem;
-	bool tx_in_progress;
-
-#ifdef CONFIG_UART_ASYNC_API
-	uint8_t rx_buf[2][CONFIG_MAVWRAP_UART_DMA_RX_BUF_SIZE];
-	uint8_t rx_buf_idx;
-	bool use_dma;
-#endif
+struct mavwrap_stats_atomic {
+	atomic_t rx_packets;
+	atomic_t tx_packets;
+	atomic_t rx_errors;
+	atomic_t tx_errors;
+	atomic_t rx_buff_overflow;
 };
 
-
 /**
- * Network transport data
- */
-struct mavwrap_netif_data {
-	struct net_if *iface;
-	struct net_context *ctx;
-	
-	mavwrap_transport_rx_cb_t rx_callback;
-	void *user_data;
-
-	/* Runtime configuration (can be changed) */
-	struct {
-		struct sockaddr_in local_addr;
-		struct sockaddr_in remote_addr;
-		char remote_ip[16];
-		uint16_t local_port;
-		uint16_t remote_port;
-	} runtime_config;
-
-	/* Original DT configuration (read-only) */
-	struct {
-		struct sockaddr_in local_addr;
-		struct sockaddr_in remote_addr;
-	} dt_config;
-
-	/* Network type and operations */
-	enum mavwrap_net_type net_type;
-	const struct mavwrap_net_ops *ops;
-
-	/* State */
-	bool dhcp_enabled;
-	bool connected;
-	atomic_t state;
-
-	/* Synchronization */
-	struct k_mutex config_mutex;
-	struct net_mgmt_event_callback mgmt_cb;
-	struct k_sem net_ready_sem;
-};
-
-
-/**
- * MAVLink wrapper data
+ * MAVLink wrapper runtime data
  */
 struct mavwrap_data {
 	const struct device *dev;
@@ -127,7 +79,7 @@ struct mavwrap_data {
 	mavwrap_rx_callback_t user_callback;
 	void *user_data;
 
-	struct mavwrap_stats stats;
+	struct mavwrap_stats_atomic stats;
 
 	struct ring_buf rx_rb;
 	uint8_t rx_rb_buf[CONFIG_MAVWRAP_RX_RING_SIZE];
@@ -135,36 +87,12 @@ struct mavwrap_data {
 
 	struct k_thread rx_thread;
 	k_tid_t rx_tid;
-	
+
 	k_thread_stack_t *rx_stack;
 
-	union mavwrap_transport_data { 
-		struct mavwrap_uart_data uart;
-		struct mavwrap_netif_data netif;
-	} transport_data;
+	/* Pointer to transport-specific runtime data */
+	void *transport_data;
 };
-
-
-/**
- * UART configuration
- */
-struct mavwrap_uart_config {
-	/* Empty for now - UART settings come from DT uart node */
-};
-
-
-/**
- * Network configuration
- */
-struct mavwrap_netif_config {
-	const char *local_ip;
-	const char *remote_ip;
-	uint16_t local_port;
-	uint16_t remote_port;
-	enum mavwrap_net_type net_type;
-	bool dhcp_enabled;
-};
-
 
 /**
  * MAVLink wrapper configuration
@@ -173,14 +101,16 @@ struct mavwrap_config {
 	const struct device *transport_dev;
 	const struct mavwrap_transport_ops *ops;
 	enum mavwrap_transport_type transport_type;
- 
+
 	k_thread_stack_t *thread_stack;
 	size_t stack_size;
 
-	union {
-		struct mavwrap_uart_config uart;
-		struct mavwrap_netif_config netif;
-	} transport_config;
+	/* Pointer to transport-specific configuration */
+	const void *transport_config;
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* MAVWRAP_COMMON_H */

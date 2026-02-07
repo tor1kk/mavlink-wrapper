@@ -8,23 +8,17 @@
 #include "mavwrap_common.h"
 #include <common/mavlink.h>
 
-
 LOG_MODULE_DECLARE(mavwrap);
-
-
-#define IRQ_RX_BUFF_SIZE		32
-
 
 static void uart_notify_rx(const struct device *dev, uint8_t *buff, size_t len)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
+	struct mavwrap_uart_data *uart_data = data->transport_data;
 
 	if (uart_data->rx_callback && len > 0) {
 		uart_data->rx_callback(dev, buff, len, uart_data->user_data);
 	}
 }
-
 
 #ifdef CONFIG_UART_ASYNC_API
 
@@ -34,7 +28,7 @@ static void uart_dma_callback(const struct device *dev,
 {
 	const struct device *mavwrap_dev = user_data;
 	struct mavwrap_data *data = mavwrap_dev->data;
-	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
+	struct mavwrap_uart_data *uart_data = data->transport_data;
 
 	switch (evt->type) {
 	case UART_RX_RDY:
@@ -85,19 +79,18 @@ static void uart_dma_callback(const struct device *dev,
 
 #endif
 
-
 static void uart_irq_callback(const struct device *uart_dev, void *user_data)
 {
 	const struct device *dev = user_data;
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
+	struct mavwrap_uart_data *uart_data = data->transport_data;
 
 	if (!uart_irq_update(uart_dev)) {
 		return;
 	}
 
 	if (uart_irq_rx_ready(uart_dev)) {
-		uint8_t rx_buff[IRQ_RX_BUFF_SIZE];
+		uint8_t rx_buff[CONFIG_MAVWRAP_UART_IRQ_RX_BUF_SIZE];
 		int rx_len = uart_fifo_read(uart_dev, rx_buff, sizeof(rx_buff));
 
 		if (rx_len > 0) {
@@ -112,11 +105,11 @@ static void uart_irq_callback(const struct device *uart_dev, void *user_data)
 			                                &uart_data->tx_buf[uart_data->tx_buf_pos],
 			                                remaining);
 			uart_data->tx_buf_pos += written;
-			
-			/* Safety check - should never happen but prevents overflow */
-			if (uart_data->tx_buf_pos > uart_data->tx_buf_len) {
-				uart_data->tx_buf_pos = uart_data->tx_buf_len;
-			}
+
+			/* This should never overflow - if it does, we have a serious bug */
+			__ASSERT(uart_data->tx_buf_pos <= uart_data->tx_buf_len,
+			         "TX buffer position overflow: %zu > %zu",
+			         uart_data->tx_buf_pos, uart_data->tx_buf_len);
 		} else {
 			uart_irq_tx_disable(uart_dev);
 			uart_data->tx_buf_len = 0;
@@ -132,7 +125,7 @@ static int mavwrap_uart_init(const struct device *dev)
 {
 	const struct mavwrap_config *config = dev->config;
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
+	struct mavwrap_uart_data *uart_data = data->transport_data;
 	const struct device *uart_dev = config->transport_dev;
 
 	if (!device_is_ready(uart_dev)) {
@@ -170,7 +163,7 @@ static int mavwrap_uart_send(const struct device *dev,
 {
 	const struct mavwrap_config *config = dev->config;
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
+	struct mavwrap_uart_data *uart_data = data->transport_data;
 	const struct device *uart_dev = config->transport_dev;
 	int ret;
 
@@ -199,6 +192,7 @@ static int mavwrap_uart_send(const struct device *dev,
 			/* Success - callback will release semaphore */
 			return 0;
 		}
+
 
 		/* DMA TX failed - cleanup and fall back to IRQ mode */
 		LOG_WRN("[%s] Async TX failed (%d), switching to IRQ mode", dev->name, ret);
@@ -231,7 +225,7 @@ static int mavwrap_uart_set_rx_callback(const struct device *dev,
                                         void *user_data)
 {
 	struct mavwrap_data *data = dev->data;
-	struct mavwrap_uart_data *uart_data = &data->transport_data.uart;
+	struct mavwrap_uart_data *uart_data = data->transport_data;
 	const struct mavwrap_config *config = dev->config;
 	const struct device *uart_dev = config->transport_dev;
 
