@@ -13,6 +13,7 @@
 
 LOG_MODULE_REGISTER(mavwrap, CONFIG_MAVWRAP_LOG_LEVEL);
 
+
 /**
  * RX thread - parses MAVLink messages from ring buffer
  */
@@ -137,15 +138,6 @@ static int mavwrap_init(const struct device *dev)
 	k_thread_name_set(data->rx_tid, thread_name);
 #endif
 
-	ret = config->ops->set_rx_callback(dev,
-	                                   mavwrap_transport_rx_handler,
-	                                   data);
-	if (ret < 0) {
-		LOG_ERR("[%s] Failed to set transport RX callback: %d", dev->name, ret);
-		k_thread_abort(data->rx_tid);
-		return ret;
-	}
-
 	LOG_INF("[%s] MAVLink interface initialized (transport: %d)",
 	        dev->name, config->transport_type);
 
@@ -153,21 +145,37 @@ static int mavwrap_init(const struct device *dev)
 }
 
 
-int mavwrap_set_rx_callback(const struct device *dev,
-                            mavwrap_rx_callback_t callback,
-                            void *user_data)
+int mavwrap_start(const struct device *dev,
+                  mavwrap_rx_callback_t callback,
+                  void *user_data)
 {
 	struct mavwrap_data *data;
+	const struct mavwrap_config *config;
+	int ret;
 
 	if (!dev) {
 		return -EINVAL;
 	}
 
 	data = dev->data;
+	config = dev->config;
 
 	data->user_callback = callback;
 	data->user_data = user_data;
 
+	if (!config->ops || !config->ops->set_rx_callback) {
+		return -ENOTSUP;
+	}
+
+	ret = config->ops->set_rx_callback(dev,
+	                                   mavwrap_transport_rx_handler,
+	                                   data);
+	if (ret < 0) {
+		LOG_ERR("[%s] Failed to start transport: %d", dev->name, ret);
+		return ret;
+	}
+
+	LOG_INF("[%s] Transport started", dev->name);
 	return 0;
 }
 

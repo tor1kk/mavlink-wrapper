@@ -115,9 +115,9 @@ mavlink_netif: mavlink-wrapper-netif {
 
 | Function | Description |
 |----------|-------------|
-| `mavwrap_set_rx_callback(dev, cb, user_data)` | Register RX message callback |
+| `mavwrap_start(dev, cb, user_data)` | Connect transport and start receiving |
 | `mavwrap_send_message(dev, msg)` | Send a MAVLink message |
-| `mavwrap_set_property(dev, prop)` | Change runtime config (IP, port) |
+| `mavwrap_set_property(dev, prop)` | Change config (call before `mavwrap_start` or with `apply_immediately`) |
 | `mavwrap_get_property(dev, prop)` | Read current config value |
 | `mavwrap_get_stats(dev, stats)` | Get TX/RX statistics |
 | `mavwrap_reset_stats(dev)` | Reset statistics counters |
@@ -175,8 +175,9 @@ static void rx_callback(const struct device *dev,
 
 int main(void)
 {
-    mavwrap_set_rx_callback(mav_uart, rx_callback, NULL);
-    mavwrap_set_rx_callback(mav_netif, rx_callback, NULL);
+    /* Properties can be changed before start */
+    mavwrap_start(mav_uart, rx_callback, NULL);
+    mavwrap_start(mav_netif, rx_callback, NULL);
 
     while (1) {
         mavlink_message_t hb;

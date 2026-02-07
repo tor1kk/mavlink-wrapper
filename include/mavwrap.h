@@ -74,18 +74,19 @@ struct mavwrap_property_value {
 };
 
 /**
- * @brief Set receive callback
- * 
- * Register a callback to be called when MAVLink messages are received.
- * 
+ * @brief Start MAVLink transport
+ *
+ * Connect the transport and begin receiving messages.
+ * Properties can be changed via mavwrap_set_property() before calling this.
+ *
  * @param dev MAVLink wrapper device
- * @param callback Callback function
+ * @param callback RX callback function (may be NULL for TX-only)
  * @param user_data User data to pass to callback
  * @return 0 on success, negative errno on error
  */
-int mavwrap_set_rx_callback(const struct device *dev,
-                            mavwrap_rx_callback_t callback,
-                            void *user_data);
+int mavwrap_start(const struct device *dev,
+                  mavwrap_rx_callback_t callback,
+                  void *user_data);
 
 /**
  * @brief Send MAVLink message
