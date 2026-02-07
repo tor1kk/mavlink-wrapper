@@ -96,6 +96,41 @@ config MAVWRAP_UART_IRQ_RX_BUF_SIZE
 
 endif # MAVWRAP_TRANSPORT_UART
 
+config MAVWRAP_TX_THREAD
+	bool "TX Thread"
+	help
+	  Use a dedicated thread for sending MAVLink messages.
+	  When enabled, mavwrap_send_message() enqueues the message
+	  and returns immediately (non-blocking).
+
+if MAVWRAP_TX_THREAD
+
+config MAVWRAP_TX_QUEUE_SIZE
+	int "TX Queue Depth"
+	default 4
+	range 2 16
+	help
+	  Number of messages that can be queued for transmission.
+	  If the queue is full, the message is dropped.
+
+config MAVWRAP_TX_STACK_SIZE
+	int "TX Thread Stack Size"
+	default 2048
+	range 1024 4096
+	help
+	  Stack size for the MAVLink TX thread.
+	  Network transports (UDP) require at least 2048 bytes.
+
+config MAVWRAP_TX_THREAD_PRIORITY
+	int "TX Thread Priority"
+	default 6
+	range 1 99
+	help
+	  Priority for the MAVLink TX thread.
+	  Lower values = higher priority.
+
+endif # MAVWRAP_TX_THREAD
+
 config MAVWRAP_INIT_PRIORITY
 	int "Initialization Priority"
 	default 80

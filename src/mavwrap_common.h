@@ -56,6 +56,16 @@ enum mavwrap_transport_type {
 	MAVWRAP_TRANSPORT_UNKNOWN,
 };
 
+#ifdef CONFIG_MAVWRAP_TX_THREAD
+/**
+ * TX queue item — serialized MAVLink packet ready to send
+ */
+struct mavwrap_tx_item {
+	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+	uint16_t len;
+};
+#endif
+
 /**
  * Internal statistics using atomic types for thread-safety
  */
@@ -90,6 +100,14 @@ struct mavwrap_data {
 
 	k_thread_stack_t *rx_stack;
 
+#ifdef CONFIG_MAVWRAP_TX_THREAD
+	struct k_msgq tx_msgq;
+	char __aligned(4) tx_msgq_buf[CONFIG_MAVWRAP_TX_QUEUE_SIZE *
+				      sizeof(struct mavwrap_tx_item)];
+	struct k_thread tx_thread;
+	k_tid_t tx_tid;
+#endif
+
 	/* Pointer to transport-specific runtime data */
 	void *transport_data;
 };
@@ -104,6 +122,11 @@ struct mavwrap_config {
 
 	k_thread_stack_t *thread_stack;
 	size_t stack_size;
+
+#ifdef CONFIG_MAVWRAP_TX_THREAD
+	k_thread_stack_t *tx_thread_stack;
+	size_t tx_stack_size;
+#endif
 
 	/* Pointer to transport-specific configuration */
 	const void *transport_config;

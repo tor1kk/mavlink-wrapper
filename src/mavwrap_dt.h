@@ -152,6 +152,19 @@ extern const struct mavwrap_transport_ops mavwrap_netif_ops;
 			(NULL))))
 
 
+/* TX thread stack (conditional) */
+#ifdef CONFIG_MAVWRAP_TX_THREAD
+#define MAVWRAP_TX_STACK_DEFINE(inst) \
+	K_THREAD_STACK_DEFINE(mavwrap_tx_stack_##inst, CONFIG_MAVWRAP_TX_STACK_SIZE);
+#define MAVWRAP_TX_CONFIG_INIT(inst) \
+	.tx_thread_stack = mavwrap_tx_stack_##inst, \
+	.tx_stack_size = K_THREAD_STACK_SIZEOF(mavwrap_tx_stack_##inst),
+#else
+#define MAVWRAP_TX_STACK_DEFINE(inst)
+#define MAVWRAP_TX_CONFIG_INIT(inst)
+#endif
+
+
 /* Main config initialization */
 #define MAVWRAP_CONFIG_INIT(inst) \
 	{ \
@@ -160,6 +173,7 @@ extern const struct mavwrap_transport_ops mavwrap_netif_ops;
 		.transport_type = MAVWRAP_TRANSPORT_TYPE(inst), \
 		.thread_stack = mavwrap_rx_stack_##inst, \
 		.stack_size = K_THREAD_STACK_SIZEOF(mavwrap_rx_stack_##inst), \
+		MAVWRAP_TX_CONFIG_INIT(inst) \
 		.transport_config = MAVWRAP_TRANSPORT_CONFIG_PTR(inst), \
 	}
 
@@ -189,10 +203,11 @@ extern const struct mavwrap_transport_ops mavwrap_netif_ops;
 	MAVWRAP_TRANSPORT_DATA_DEFINE(inst) \
 	MAVWRAP_TRANSPORT_CONFIG_DEFINE(inst) \
 	\
-	/* Allocate RX thread stack */ \
+	/* Allocate thread stacks */ \
 	K_THREAD_STACK_DEFINE( \
 		mavwrap_rx_stack_##inst, \
 		CONFIG_MAVWRAP_RX_STACK_SIZE); \
+	MAVWRAP_TX_STACK_DEFINE(inst) \
 	\
 	/* Initialize main data structure with pointer */ \
 	static struct mavwrap_data mavwrap_data_##inst = \

@@ -62,6 +62,10 @@ CONFIG_MAVWRAP_TRANSPORT_NETIF=y
 | `CONFIG_MAVWRAP_UART_RX_TIMEOUT_MS` | 100 | UART async RX timeout |
 | `CONFIG_MAVWRAP_UART_IRQ_RX_BUF_SIZE` | 32 | UART IRQ mode RX buffer |
 | `CONFIG_MAVWRAP_UART_DMA_RX_BUF_SIZE` | 512 | UART DMA RX buffer (needs `UART_ASYNC_API`) |
+| `CONFIG_MAVWRAP_TX_THREAD` | n | Dedicated TX thread with message queue |
+| `CONFIG_MAVWRAP_TX_QUEUE_SIZE` | 4 | TX queue depth (2-16) |
+| `CONFIG_MAVWRAP_TX_STACK_SIZE` | 2048 | TX thread stack size (1024-4096) |
+| `CONFIG_MAVWRAP_TX_THREAD_PRIORITY` | 6 | TX thread priority (1-99) |
 | `CONFIG_MAVWRAP_NETIF_CONNECT_TIMEOUT_MS` | 5000 | Network connection timeout |
 | `CONFIG_MAVWRAP_NETIF_SEND_TIMEOUT_MS` | 1000 | Network send timeout |
 
@@ -116,7 +120,7 @@ mavlink_netif: mavlink-wrapper-netif {
 | Function | Description |
 |----------|-------------|
 | `mavwrap_start(dev, cb, user_data)` | Connect transport and start receiving |
-| `mavwrap_send_message(dev, msg)` | Send a MAVLink message |
+| `mavwrap_send_message(dev, msg)` | Send a MAVLink message (non-blocking with `TX_THREAD`) |
 | `mavwrap_set_property(dev, prop)` | Change config (call before `mavwrap_start` or with `apply_immediately`) |
 | `mavwrap_get_property(dev, prop)` | Read current config value |
 | `mavwrap_get_stats(dev, stats)` | Get TX/RX statistics |
@@ -133,6 +137,13 @@ struct mavwrap_property_value prop = {
 };
 mavwrap_set_property(dev, &prop);
 ```
+
+### TX thread (optional)
+
+When `CONFIG_MAVWRAP_TX_THREAD=y`, `mavwrap_send_message()` enqueues the packet and returns immediately. A dedicated thread handles the actual transmission. This is useful for:
+- Non-blocking sends from RX callbacks (e.g. sending ACK)
+- Slow transports (WiFi)
+- High message rates
 
 ## Usage example
 

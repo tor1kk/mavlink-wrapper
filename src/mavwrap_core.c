@@ -53,6 +53,37 @@ static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 }
 
 
+#ifdef CONFIG_MAVWRAP_TX_THREAD
+/**
+ * TX thread - sends queued MAVLink packets
+ */
+static void mavwrap_tx_thread(void *p1, void *p2, void *p3)
+{
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
+
+	const struct device *dev = p1;
+	struct mavwrap_data *data = dev->data;
+	const struct mavwrap_config *config = dev->config;
+	struct mavwrap_tx_item item;
+
+	LOG_INF("[%s] TX thread started", dev->name);
+
+	while (1) {
+		k_msgq_get(&data->tx_msgq, &item, K_FOREVER);
+
+		int ret = config->ops->send(dev, item.buf, item.len);
+
+		if (ret == 0) {
+			atomic_inc(&data->stats.tx_packets);
+		} else {
+			atomic_inc(&data->stats.tx_errors);
+		}
+	}
+}
+#endif
+
+
 /**
  * Transport RX handler - called by transport layer
  */
@@ -138,6 +169,26 @@ static int mavwrap_init(const struct device *dev)
 	k_thread_name_set(data->rx_tid, thread_name);
 #endif
 
+#ifdef CONFIG_MAVWRAP_TX_THREAD
+	k_msgq_init(&data->tx_msgq, data->tx_msgq_buf,
+	             sizeof(struct mavwrap_tx_item),
+	             CONFIG_MAVWRAP_TX_QUEUE_SIZE);
+
+	data->tx_tid = k_thread_create(
+		&data->tx_thread,
+		config->tx_thread_stack,
+		config->tx_stack_size,
+		mavwrap_tx_thread,
+		(void *)dev, NULL, NULL,
+		CONFIG_MAVWRAP_TX_THREAD_PRIORITY,
+		0, K_NO_WAIT);
+
+#ifdef CONFIG_THREAD_NAME
+	snprintk(thread_name, sizeof(thread_name), "mav_tx_%s", dev->name);
+	k_thread_name_set(data->tx_tid, thread_name);
+#endif
+#endif
+
 	LOG_INF("[%s] MAVLink interface initialized (transport: %d)",
 	        dev->name, config->transport_type);
 
@@ -184,17 +235,30 @@ int mavwrap_send_message(const struct device *dev,
                          const mavlink_message_t *msg)
 {
 	struct mavwrap_data *data;
-	const struct mavwrap_config *config;
-	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
-	uint16_t len;
-	int ret;
 
 	if (!dev || !msg) {
 		return -EINVAL;
 	}
 
 	data = dev->data;
-	config = dev->config;
+
+#ifdef CONFIG_MAVWRAP_TX_THREAD
+	struct mavwrap_tx_item item;
+
+	item.len = mavlink_msg_to_send_buffer(item.buf, msg);
+
+	if (k_msgq_put(&data->tx_msgq, &item, K_NO_WAIT) != 0) {
+		LOG_WRN("[%s] TX queue full, message dropped", dev->name);
+		atomic_inc(&data->stats.tx_errors);
+		return -ENOMEM;
+	}
+
+	return 0;
+#else
+	const struct mavwrap_config *config = dev->config;
+	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+	uint16_t len;
+	int ret;
 
 	len = mavlink_msg_to_send_buffer(buf, msg);
 
@@ -211,6 +275,7 @@ int mavwrap_send_message(const struct device *dev,
 	}
 
 	return ret;
+#endif
 }
 
 
