@@ -17,4 +17,4 @@ zephyr_library_sources_ifdef(CONFIG_MAVWRAP_TRANSPORT_NETIF
     src/mavwrap_udp.c
 )
 
-zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/mavlink/)
+target_include_directories(zephyr_interface SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/libs/mavlink/)

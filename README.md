@@ -50,6 +50,10 @@ CONFIG_MAVWRAP_TRANSPORT_NETIF=y
 # ... plus serial and networking configs above
 ```
 
+### Build notes
+
+MAVLink C headers are included as **system includes** (`-isystem`) to suppress compiler warnings (`-Waddress-of-packed-member`, etc.) originating from the generated MAVLink library code. Warnings from the wrapper's own sources are not affected.
+
 ### Kconfig options
 
 | Option | Default | Description |
