@@ -195,9 +195,10 @@ static int mavwrap_netif_init(const struct device *dev)
 	/* Initialize runtime config from DT config */
 	netif_data->runtime_config.local_port = netif_config->local_port;
 	netif_data->runtime_config.remote_port = netif_config->remote_port;
-	strncpy(netif_data->runtime_config.remote_ip, 
+	strncpy(netif_data->runtime_config.remote_ip,
 	        netif_config->remote_ip,
 	        sizeof(netif_data->runtime_config.remote_ip) - 1);
+	netif_data->runtime_config.remote_ip[sizeof(netif_data->runtime_config.remote_ip) - 1] = '\0';
 
 	/* Parse and store DT addresses */
 	netif_data->dt_config.local_addr.sin_family = AF_INET;

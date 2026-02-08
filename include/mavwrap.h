@@ -89,6 +89,17 @@ int mavwrap_start(const struct device *dev,
                   void *user_data);
 
 /**
+ * @brief Stop MAVLink transport
+ *
+ * Disable RX callback delivery. Pending TX messages (if TX thread is enabled)
+ * will still be sent. Can be restarted with mavwrap_start().
+ *
+ * @param dev MAVLink wrapper device
+ * @return 0 on success, -EALREADY if already stopped, negative errno on error
+ */
+int mavwrap_stop(const struct device *dev);
+
+/**
  * @brief Send MAVLink message
  * 
  * Serialize and send a MAVLink message through the configured transport.

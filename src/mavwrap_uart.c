@@ -15,8 +15,12 @@ static void uart_notify_rx(const struct device *dev, uint8_t *buff, size_t len)
 	struct mavwrap_data *data = dev->data;
 	struct mavwrap_uart_data *uart_data = data->transport_data;
 
-	if (uart_data->rx_callback && len > 0) {
-		uart_data->rx_callback(dev, buff, len, uart_data->user_data);
+	if (len > 0) {
+		mavwrap_transport_rx_cb_t cb = uart_data->rx_callback;
+
+		if (cb) {
+			cb(dev, buff, len, uart_data->user_data);
+		}
 	}
 }
 
@@ -208,12 +212,12 @@ static int mavwrap_uart_send(const struct device *dev,
 	}
 #endif
 
-	/* IRQ mode transmission */
+	/* IRQ mode transmission — set all state before enabling IRQ */
 	memcpy(uart_data->tx_buf, buf, len);
-	uart_data->tx_buf_len = len;
 	uart_data->tx_buf_pos = 0;
 	uart_data->tx_in_progress = true;
-
+	compiler_barrier();
+	uart_data->tx_buf_len = len;
 	uart_irq_tx_enable(uart_dev);
 
 	return 0;

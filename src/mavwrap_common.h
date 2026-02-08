@@ -19,6 +19,22 @@
 
 #include "mavwrap.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Transport RX callback type (common for all transports)
+ */
+typedef void (*mavwrap_transport_rx_cb_t)(const struct device *dev,
+                                          const uint8_t *buf,
+                                          size_t len,
+                                          void *user_data);
+
+#ifdef __cplusplus
+}
+#endif
+
 /* Conditionally include transport-specific headers */
 #ifdef CONFIG_MAVWRAP_TRANSPORT_UART
 #include "mavwrap_uart.h"
@@ -88,6 +104,7 @@ struct mavwrap_data {
 
 	mavwrap_rx_callback_t user_callback;
 	void *user_data;
+	atomic_t started;
 
 	struct mavwrap_stats_atomic stats;
 

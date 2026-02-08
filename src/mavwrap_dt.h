@@ -23,12 +23,12 @@ extern "C" {
 
 /* Network interface check */
 #define MAVWRAP_HAS_NETIF(inst) \
-	DT_PROP(DT_DRV_INST(inst), net_interface)
+	DT_PROP_OR(DT_DRV_INST(inst), net_interface, 0)
 
 
 /* UART check */
 #define MAVWRAP_HAS_UART(inst) \
-	DT_PROP(DT_DRV_INST(inst), serial_interface)
+	DT_PROP_OR(DT_DRV_INST(inst), serial_interface, 0)
 
 
 /* Transport device */
@@ -78,7 +78,7 @@ extern const struct mavwrap_transport_ops mavwrap_netif_ops;
 
 /* Network configuration macros */
 #define MAVWRAP_NETIF_DHCP_ENABLE(inst) \
-	DT_PROP(DT_DRV_INST(inst), use_dhcp)
+	DT_PROP_OR(DT_DRV_INST(inst), use_dhcp, 0)
 
 #define MAVWRAP_NETIF_LOCAL_IP(inst) \
 	DT_PROP_OR(DT_DRV_INST(inst), local_ip, "0.0.0.0")
@@ -93,7 +93,7 @@ extern const struct mavwrap_transport_ops mavwrap_netif_ops;
 	DT_PROP_OR(DT_DRV_INST(inst), remote_port, 14551)
 
 #define MAVWRAP_NETIF_TYPE(inst) \
-	((enum mavwrap_net_type)DT_ENUM_IDX(DT_DRV_INST(inst), net_type))
+	((enum mavwrap_net_type)DT_ENUM_IDX_OR(DT_DRV_INST(inst), net_type, 0))
 
 
 /* UART config initialization */
@@ -192,7 +192,10 @@ extern const struct mavwrap_transport_ops mavwrap_netif_ops;
 		"mavlink-wrapper: 'transport' phandle is required"); \
 	BUILD_ASSERT( \
 		MAVWRAP_HAS_UART(inst) || MAVWRAP_HAS_NETIF(inst), \
-		"mavlink-wrapper: unknown transport type");
+		"mavlink-wrapper: unknown transport type"); \
+	BUILD_ASSERT( \
+		!(MAVWRAP_HAS_UART(inst) && MAVWRAP_HAS_NETIF(inst)), \
+		"mavlink-wrapper: set only one of serial-interface / net-interface");
 
 
 /* Device instantiation */

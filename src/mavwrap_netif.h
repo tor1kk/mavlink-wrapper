@@ -22,13 +22,7 @@
 extern "C" {
 #endif
 
-/**
- * Forward declaration of transport RX callback
- */
-typedef void (*mavwrap_transport_rx_cb_t)(const struct device *dev,
-                                          const uint8_t *buf,
-                                          size_t len,
-                                          void *user_data);
+/* mavwrap_transport_rx_cb_t is defined in mavwrap_common.h */
 
 /**
  * Network transport type

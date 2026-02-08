@@ -36,13 +36,16 @@ static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 			continue;
 		}
 
-		if (mavlink_parse_char(MAVLINK_COMM_0, rx_byte, 
+		if (mavlink_parse_char(MAVLINK_COMM_0, rx_byte,
 		                       &data->rx_msg, &data->rx_status)) {
 			atomic_inc(&data->stats.rx_packets);
 
-			/* Call user callback without holding mutex */
-			if (data->user_callback) {
-				data->user_callback(dev, &data->rx_msg, data->user_data);
+			if (atomic_get(&data->started)) {
+				mavwrap_rx_callback_t cb = data->user_callback;
+
+				if (cb) {
+					cb(dev, &data->rx_msg, data->user_data);
+				}
 			}
 		}
 
@@ -126,6 +129,7 @@ static int mavwrap_init(const struct device *dev)
 
 	/* Transport data is already zero-initialized in static allocation */
 
+	atomic_set(&data->started, 0);
 	atomic_set(&data->stats.rx_packets, 0);
 	atomic_set(&data->stats.tx_packets, 0);
 	atomic_set(&data->stats.rx_errors, 0);
@@ -211,22 +215,48 @@ int mavwrap_start(const struct device *dev,
 	data = dev->data;
 	config = dev->config;
 
-	data->user_callback = callback;
-	data->user_data = user_data;
-
 	if (!config->ops || !config->ops->set_rx_callback) {
 		return -ENOTSUP;
 	}
+
+	/* Store callback before enabling transport */
+	data->user_callback = callback;
+	data->user_data = user_data;
 
 	ret = config->ops->set_rx_callback(dev,
 	                                   mavwrap_transport_rx_handler,
 	                                   data);
 	if (ret < 0) {
+		data->user_callback = NULL;
+		data->user_data = NULL;
 		LOG_ERR("[%s] Failed to start transport: %d", dev->name, ret);
 		return ret;
 	}
 
+	atomic_set(&data->started, 1);
 	LOG_INF("[%s] Transport started", dev->name);
+	return 0;
+}
+
+
+int mavwrap_stop(const struct device *dev)
+{
+	struct mavwrap_data *data;
+
+	if (!dev) {
+		return -EINVAL;
+	}
+
+	data = dev->data;
+
+	if (!atomic_cas(&data->started, 1, 0)) {
+		return -EALREADY;
+	}
+
+	data->user_callback = NULL;
+	data->user_data = NULL;
+
+	LOG_INF("[%s] Transport stopped", dev->name);
 	return 0;
 }
 
@@ -250,7 +280,7 @@ int mavwrap_send_message(const struct device *dev,
 	if (k_msgq_put(&data->tx_msgq, &item, K_NO_WAIT) != 0) {
 		LOG_WRN("[%s] TX queue full, message dropped", dev->name);
 		atomic_inc(&data->stats.tx_errors);
-		return -ENOMEM;
+		return -EAGAIN;
 	}
 
 	return 0;

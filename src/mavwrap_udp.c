@@ -64,9 +64,11 @@ static void udp_recv_callback(struct net_context *context,
 
 	net_pkt_unref(pkt);
 
-	/* Pass to transport layer callback */
-	if (netif_data->rx_callback) {
-		netif_data->rx_callback(dev, rx_buf, len, netif_data->user_data);
+	/* Pass to transport layer callback (local copy avoids TOCTOU race) */
+	mavwrap_transport_rx_cb_t cb = netif_data->rx_callback;
+
+	if (cb) {
+		cb(dev, rx_buf, len, netif_data->user_data);
 	}
 }
 
@@ -226,6 +228,7 @@ static int mavwrap_udp_set_property(const struct device *dev,
 		strncpy(netif_data->runtime_config.remote_ip,
 		        prop->value.ip_str,
 		        sizeof(netif_data->runtime_config.remote_ip) - 1);
+		netif_data->runtime_config.remote_ip[sizeof(netif_data->runtime_config.remote_ip) - 1] = '\0';
 		LOG_INF("[%s] Remote IP updated to %s", dev->name, prop->value.ip_str);
 		/* UDP doesn't need reconnect for remote address change */
 		break;

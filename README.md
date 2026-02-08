@@ -124,6 +124,7 @@ mavlink_netif: mavlink-wrapper-netif {
 | Function | Description |
 |----------|-------------|
 | `mavwrap_start(dev, cb, user_data)` | Connect transport and start receiving |
+| `mavwrap_stop(dev)` | Stop RX callback delivery (can restart with `mavwrap_start`) |
 | `mavwrap_send_message(dev, msg)` | Send a MAVLink message (non-blocking with `TX_THREAD`) |
 | `mavwrap_set_property(dev, prop)` | Change config (call before `mavwrap_start` or with `apply_immediately`) |
 | `mavwrap_get_property(dev, prop)` | Read current config value |
