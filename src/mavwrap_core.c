@@ -9,7 +9,7 @@
 #include <mavwrap.h>
 #include "mavwrap_common.h"
 #include "mavwrap_dt.h"
-#include <common/mavlink.h>
+
 
 LOG_MODULE_REGISTER(mavwrap, CONFIG_MAVWRAP_LOG_LEVEL);
 

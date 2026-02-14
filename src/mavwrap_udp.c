@@ -10,7 +10,9 @@
 #include "mavwrap_common.h"
 #include <common/mavlink.h>
 
+
 LOG_MODULE_DECLARE(mavwrap);
+
 
 /**
  * UDP receive callback

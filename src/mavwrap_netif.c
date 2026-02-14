@@ -6,10 +6,12 @@
 
 #include "mavwrap_common.h"
 
+
 LOG_MODULE_DECLARE(mavwrap);
 
 /* Forward declaration of UDP ops */
 extern const struct mavwrap_net_ops mavwrap_udp_ops;
+
 
 /**
  * Get network operations for specific type

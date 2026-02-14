@@ -6,9 +6,10 @@
 #include <zephyr/sys/ring_buffer.h>
 
 #include "mavwrap_common.h"
-#include <common/mavlink.h>
+ 
 
 LOG_MODULE_DECLARE(mavwrap);
+
 
 static void uart_notify_rx(const struct device *dev, uint8_t *buff, size_t len)
 {
@@ -189,8 +190,10 @@ static int mavwrap_uart_send(const struct device *dev,
 
 #ifdef CONFIG_UART_ASYNC_API
 	if (uart_data->use_dma) {
+		memcpy(uart_data->tx_buf, buf, len);
+
 		uart_data->tx_in_progress = true;
-		ret = uart_tx(uart_dev, buf, len, (int32_t)(CONFIG_MAVWRAP_UART_TX_TIMEOUT_MS * 1000));
+		ret = uart_tx(uart_dev, uart_data->tx_buf, len, (int32_t)(CONFIG_MAVWRAP_UART_TX_TIMEOUT_MS * 1000));
 
 		if (ret == 0) {
 			/* Success - callback will release semaphore */
@@ -202,12 +205,12 @@ static int mavwrap_uart_send(const struct device *dev,
 		LOG_WRN("[%s] Async TX failed (%d), switching to IRQ mode", dev->name, ret);
 		uart_data->use_dma = false;
 		uart_data->tx_in_progress = false;
-		
+
 		/* Configure IRQ mode */
 		uart_irq_rx_disable(uart_dev);
 		uart_irq_tx_disable(uart_dev);
 		uart_irq_callback_user_data_set(uart_dev, uart_irq_callback, (void *)dev);
-		
+
 		/* We still hold the semaphore, so can proceed with IRQ mode */
 	}
 #endif
