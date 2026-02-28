@@ -14,7 +14,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(CONFIG_MAVWRAP_DIALECT_ARDUPILOTMEGA)
+#include <ardupilotmega/mavlink.h>
+#elif defined(CONFIG_MAVWRAP_DIALECT_COMMON)
 #include <common/mavlink.h>
+#else
+#error "No MAVLink dialect selected. Enable MAVWRAP and set MAVWRAP_DIALECT."
+#endif
 
 #ifdef __cplusplus
 extern "C" {

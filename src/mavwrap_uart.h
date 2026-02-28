@@ -12,7 +12,6 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
-#include <common/mavlink.h>
 
 #ifdef __cplusplus
 extern "C" {

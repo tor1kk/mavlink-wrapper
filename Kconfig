@@ -6,6 +6,27 @@ menuconfig MAVWRAP
 
 if MAVWRAP
 
+choice MAVWRAP_DIALECT
+	prompt "MAVLink Dialect"
+	default MAVWRAP_DIALECT_COMMON
+	help
+	  Select the MAVLink message dialect to use.
+	  The dialect determines which message set is available.
+
+config MAVWRAP_DIALECT_COMMON
+	bool "common"
+	help
+	  MAVLink common dialect. Includes the base message set
+	  shared across all MAVLink implementations.
+
+config MAVWRAP_DIALECT_ARDUPILOTMEGA
+	bool "ardupilotmega"
+	help
+	  ArduPilot MAVLink dialect. Superset of common, includes
+	  ArduPilot-specific messages for copters, planes, and rovers.
+
+endchoice
+
 config MAVWRAP_LOG_LEVEL
 	int "MAVLink Wrapper Log Level"
 	default 3

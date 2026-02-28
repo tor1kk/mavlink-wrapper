@@ -54,10 +54,26 @@ CONFIG_MAVWRAP_TRANSPORT_NETIF=y
 
 MAVLink C headers are included as **system includes** (`-isystem`) to suppress compiler warnings (`-Waddress-of-packed-member`, etc.) originating from the generated MAVLink library code. Warnings from the wrapper's own sources are not affected.
 
+### Dialect
+
+Select the MAVLink message dialect via Kconfig (default: `common`):
+
+```ini
+# Use the ArduPilot dialect (superset of common)
+CONFIG_MAVWRAP_DIALECT_ARDUPILOTMEGA=y
+
+# Use the common dialect (default)
+CONFIG_MAVWRAP_DIALECT_COMMON=y
+```
+
+The dialect header is included automatically by `mavwrap.h` — do not include `<common/mavlink.h>` or any other dialect header directly in your application.
+
 ### Kconfig options
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `CONFIG_MAVWRAP_DIALECT_COMMON` | y | MAVLink common dialect |
+| `CONFIG_MAVWRAP_DIALECT_ARDUPILOTMEGA` | n | ArduPilot dialect (superset of common) |
 | `CONFIG_MAVWRAP_RX_STACK_SIZE` | 2048 | RX thread stack size (1024-8192) |
 | `CONFIG_MAVWRAP_RX_THREAD_PRIORITY` | 5 | RX thread priority (1-99) |
 | `CONFIG_MAVWRAP_RX_RING_SIZE` | 1024 | RX ring buffer size (256-4096) |
@@ -118,7 +134,6 @@ mavlink_netif: mavlink-wrapper-netif {
 
 ```c
 #include <mavwrap.h>
-#include <common/mavlink.h>
 ```
 
 | Function | Description |
@@ -158,7 +173,6 @@ Heartbeat + ARM/DISARM on both UART and UDP:
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <mavwrap.h>
-#include <common/mavlink.h>
 
 #define SYS_ID  1
 #define COMP_ID 1
