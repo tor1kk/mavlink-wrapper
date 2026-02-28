@@ -23,6 +23,7 @@ static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p3);
 
 	const struct device *dev = p1;
+	const struct mavwrap_config *config = dev->config;
 	struct mavwrap_data *data = dev->data;
 	uint8_t rx_byte = 0;
 
@@ -36,7 +37,7 @@ static void mavwrap_rx_thread(void *p1, void *p2, void *p3)
 			continue;
 		}
 
-		if (mavlink_parse_char(MAVLINK_COMM_0, rx_byte,
+		if (mavlink_parse_char(config->chan, rx_byte,
 		                       &data->rx_msg, &data->rx_status)) {
 			atomic_inc(&data->stats.rx_packets);
 

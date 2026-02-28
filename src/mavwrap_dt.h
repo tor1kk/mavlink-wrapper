@@ -171,6 +171,7 @@ extern const struct mavwrap_transport_ops mavwrap_netif_ops;
 		.transport_dev = MAVWRAP_TRANSPORT_DEV(inst), \
 		.ops = MAVWRAP_TRANSPORT_OPS(inst), \
 		.transport_type = MAVWRAP_TRANSPORT_TYPE(inst), \
+		.chan = (mavlink_channel_t)(inst), \
 		.thread_stack = mavwrap_rx_stack_##inst, \
 		.stack_size = K_THREAD_STACK_SIZEOF(mavwrap_rx_stack_##inst), \
 		MAVWRAP_TX_CONFIG_INIT(inst) \
@@ -195,7 +196,10 @@ extern const struct mavwrap_transport_ops mavwrap_netif_ops;
 		"mavlink-wrapper: unknown transport type"); \
 	BUILD_ASSERT( \
 		!(MAVWRAP_HAS_UART(inst) && MAVWRAP_HAS_NETIF(inst)), \
-		"mavlink-wrapper: set only one of serial-interface / net-interface");
+		"mavlink-wrapper: set only one of serial-interface / net-interface"); \
+	BUILD_ASSERT( \
+		inst < MAVLINK_COMM_NUM_BUFFERS, \
+		"mavlink-wrapper: too many instances, exceeds MAVLINK_COMM_NUM_BUFFERS");
 
 
 /* Device instantiation */

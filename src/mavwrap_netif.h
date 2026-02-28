@@ -22,7 +22,6 @@
 extern "C" {
 #endif
 
-/* mavwrap_transport_rx_cb_t is defined in mavwrap_common.h */
 
 /**
  * Network transport type

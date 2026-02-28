@@ -136,6 +136,7 @@ struct mavwrap_config {
 	const struct device *transport_dev;
 	const struct mavwrap_transport_ops *ops;
 	enum mavwrap_transport_type transport_type;
+	mavlink_channel_t chan;
 
 	k_thread_stack_t *thread_stack;
 	size_t stack_size;
